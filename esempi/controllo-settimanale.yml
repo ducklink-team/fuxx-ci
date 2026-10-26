@@ -1,0 +1,14 @@
+name: Controllo settimanale demo
+on:
+  schedule:
+    - cron: '23 4 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  sito:
+    uses: ducklink-team/fuxx-ci/.github/workflows/controllo-sito.yml@v1
+    with:
+      url: ${{ vars.DEMO_URL }}
+    secrets:
+      LETTURA_CI: ${{ secrets.LETTURA_CI }}

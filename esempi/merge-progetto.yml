@@ -1,0 +1,16 @@
+# Copiare in .github/workflows/merge.yml sul ramo predefinito.
+name: Merge dopo CI
+on:
+  workflow_run:
+    workflows: [CI progetto]
+    types: [completed]
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: write
+jobs:
+  merge:
+    uses: ducklink-team/fuxx-ci/.github/workflows/merge-automatico.yml@v1
+    secrets:
+      LETTURA_CI: ${{ secrets.LETTURA_CI }}

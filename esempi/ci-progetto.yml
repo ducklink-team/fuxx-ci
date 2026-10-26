@@ -1,0 +1,56 @@
+# Copiare in .github/workflows/ci.yml del progetto (Node).
+name: CI progetto
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verifica:
+    name: CI progetto
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: npm ci
+      - run: npm run lint && npm run typecheck && npm test && npm run build && npm run controlli
+  sicurezza:
+    uses: ducklink-team/fuxx-ci/.github/workflows/sicurezza.yml@v1
+    with:
+      linguaggio: node
+    secrets:
+      LETTURA_CI: ${{ secrets.LETTURA_CI }}
+  revisione:
+    name: Revisione AI
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: ducklink-team/fuxx-ci
+          ref: v1
+          token: ${{ secrets.LETTURA_CI }}
+          path: __fuxx_ci
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Revisione obbligatoria con verdetto e SHA
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          BASE_REF: origin/${{ github.base_ref }}
+          PR_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node __fuxx_ci/scripts/revisione.mjs scripts/revisione-ai.mjs
+# Affiancare merge-progetto.yml: richiama merge-automatico.yml@v1 dopo questo workflow.

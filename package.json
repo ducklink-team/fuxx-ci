@@ -1,0 +1,7 @@
+{
+  "name": "fuxx-ci",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node --test \"scripts/test/*.test.mjs\"" },
+  "engines": { "node": ">=24" }
+}

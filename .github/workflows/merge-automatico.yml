@@ -1,0 +1,48 @@
+name: Merge automatico riutilizzabile
+on:
+  workflow_call:
+    inputs:
+      controlli:
+        type: string
+        default: '["CI progetto", "sicurezza / Sicurezza"]'
+        description: Nomi esatti dei job obbligatori nel workflow CI
+      revisione:
+        type: string
+        default: Revisione AI
+      versione-ci:
+        type: string
+        default: v1
+    secrets:
+      LETTURA_CI:
+        required: true
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: write
+concurrency:
+  group: merge-${{ github.event.workflow_run.head_branch || github.run_id }}
+  cancel-in-progress: false
+jobs:
+  merge:
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Mai checkout del ramo PR o esecuzione di suoi artefatti con token write.
+      - uses: actions/checkout@v5
+        with:
+          repository: ducklink-team/fuxx-ci
+          ref: ${{ inputs.versione-ci }}
+          token: ${{ secrets.LETTURA_CI }}
+          path: __fuxx_ci
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Valuta PR e unisci solo se ammessa
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CONTROLLI_OBBLIGATORI: ${{ inputs.controlli }}
+          NOME_REVISIONE: ${{ inputs.revisione }}
+        run: node __fuxx_ci/scripts/merge.mjs
