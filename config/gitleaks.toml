@@ -1,0 +1,6 @@
+# Configurazione gitleaks di proprietà di fuxx-ci: solo regole predefinite, nessuna eccezione.
+# Il workflow la passa con --config, così un .gitleaks.toml del progetto non viene mai caricato.
+title = "fuxx-ci"
+
+[extend]
+useDefault = true

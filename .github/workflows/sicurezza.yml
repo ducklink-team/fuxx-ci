@@ -31,6 +31,17 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      # Il percorso del toolkit è escluso da Semgrep: la PR non può occuparlo con propri file.
+      # I file di ignore/configurazione degli scanner non devono venire dalla PR: se presenti il gate fallisce.
+      - name: Rifiuta file di controllo forniti dalla PR
+        shell: bash
+        run: |
+          trovati=$(git ls-files -z | tr '\0' '\n' | grep -E '(^|/)(__fuxx_ci(/|$)|\.semgrepignore$|\.gitleaksignore$|\.?gitleaks[^/]*\.toml$|\.semgrep\.ya?ml$)' || true)
+          if [ -n "$trovati" ]; then
+            echo "::error::File riservati agli scanner non ammessi nel progetto (rimuoverli):"
+            printf '%s\n' "$trovati" | head -20
+            exit 1
+          fi
       - uses: actions/checkout@v5
         with:
           repository: ducklink-team/fuxx-ci
@@ -55,13 +66,14 @@ jobs:
           curl -fsSL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_checksums.txt -o "$RUNNER_TEMP/gitleaks-checksums.txt"
           (cd "$RUNNER_TEMP" && grep ' gitleaks_8.30.1_linux_x64.tar.gz$' gitleaks-checksums.txt | sha256sum -c -)
           tar -xzf "$RUNNER_TEMP/gitleaks_8.30.1_linux_x64.tar.gz" -C "$RUNNER_TEMP" gitleaks
-          "$RUNNER_TEMP/gitleaks" git --redact -v .
+          mkdir "$RUNNER_TEMP/gitleaks-vuoto"
+          "$RUNNER_TEMP/gitleaks" git --redact -v --config "$GITHUB_WORKSPACE/__fuxx_ci/config/gitleaks.toml" --ignore-gitleaks-allow --gitleaks-ignore-path "$RUNNER_TEMP/gitleaks-vuoto" .
       # Semgrep CE, regole pubbliche, senza login: https://semgrep.dev/products/community-edition
       - name: Installa Semgrep Community
         run: python -m pip install semgrep
       - name: Analisi statica bloccante
         working-directory: ${{ inputs.directory }}
-        run: semgrep scan --config p/security-audit --error --metrics=off --exclude '__fuxx_ci/**' .
+        run: semgrep scan --config p/security-audit --error --metrics=off --no-git-ignore --disable-nosem --exclude '__fuxx_ci/**' .
       - name: Dipendenze Node senza script di installazione
         if: inputs.linguaggio == 'node'
         working-directory: ${{ inputs.directory }}

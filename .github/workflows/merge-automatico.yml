@@ -6,14 +6,21 @@ on:
         type: string
         default: '["CI progetto", "sicurezza / Sicurezza"]'
         description: Nomi esatti dei job obbligatori nel workflow CI
-      revisione:
+      workflow-ci:
         type: string
-        default: Revisione AI
+        default: .github/workflows/ci.yml
+        description: Percorso del workflow CI del progetto (deve essere identico sul ramo base)
+      modello-revisione:
+        type: string
+        required: true
+        description: Identificatore del modello OpenRouter per la revisione (scelta del CEO, nessun default)
       versione-ci:
         type: string
         default: v1
     secrets:
       LETTURA_CI:
+        required: true
+      OPENROUTER_API_KEY:
         required: true
 permissions:
   contents: write
@@ -44,5 +51,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           CONTROLLI_OBBLIGATORI: ${{ inputs.controlli }}
-          NOME_REVISIONE: ${{ inputs.revisione }}
+          WORKFLOW_CI: ${{ inputs.workflow-ci }}
+          MODELLO_REVISIONE: ${{ inputs.modello-revisione }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: node __fuxx_ci/scripts/merge.mjs

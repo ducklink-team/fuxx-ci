@@ -12,5 +12,9 @@ permissions:
 jobs:
   merge:
     uses: ducklink-team/fuxx-ci/.github/workflows/merge-automatico.yml@v1
+    with:
+      workflow-ci: .github/workflows/ci.yml
+      modello-revisione: ${{ vars.MODELLO_REVISIONE }}
     secrets:
       LETTURA_CI: ${{ secrets.LETTURA_CI }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}

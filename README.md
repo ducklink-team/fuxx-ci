@@ -5,11 +5,11 @@ Cartella pronta a diventare la radice di `ducklink-team/fuxx-ci`, dopo il merge 
 ## Contenuto e utilizzo
 
 - `.github/workflows/sicurezza.yml`: gitleaks **8.30.1** con checksum, Semgrep CE, audit bloccante, inventario licenze con avvisi.
-- `.github/workflows/merge-automatico.yml`: controlla PR e job dello stesso run/SHA, revisione esplicita, file a rischio; merge squash e dispatch della demo.
+- `.github/workflows/merge-automatico.yml`: controlla PR e job dello stesso run/SHA, revisione AI eseguita da fuxx-ci, provenienza dei job, file a rischio; merge squash e dispatch della demo.
 - `.github/workflows/controllo-sito.yml`: header, ZAP baseline passivo, riepilogo e rapporto conservato sette giorni.
 - `scripts/`: decisioni verificabili con `node --test`; `renovate/default.json`: preset condiviso.
 
-Copiare `esempi/ci-progetto.yml` in `.github/workflows/ci.yml` del progetto e **anche** `esempi/merge-progetto.yml` in `.github/workflows/merge.yml`. Servono due workflow: CI su `pull_request`, merge privilegiato su `workflow_run` concluso. Non usare `pull_request_target` per eseguire codice PR. Il workflow di merge deve essere già sul ramo predefinito. Il progetto deve fornire gli script npm indicati nell'esempio e `scripts/revisione-ai.mjs` del modello.
+Copiare `esempi/ci-progetto.yml` in `.github/workflows/ci.yml` del progetto e **anche** `esempi/merge-progetto.yml` in `.github/workflows/merge.yml`. Servono due workflow: CI su `pull_request`, merge privilegiato su `workflow_run` concluso. Non usare `pull_request_target` per eseguire codice PR. Il workflow di merge deve essere già sul ramo predefinito e richiede il secret `OPENROUTER_API_KEY` e la variabile `MODELLO_REVISIONE`. Il progetto deve fornire gli script npm indicati nell'esempio; `scripts/revisione-ai.mjs` non serve più.
 
 Per il controllo settimanale copiare `esempi/controllo-settimanale.yml`, impostare la variabile repository `DEMO_URL` con l'URL HTTPS della demo autorizzata. Il cron è lunedì alle 04:23 UTC. Un workflow solo `workflow_call` non si pianifica da sé.
 
@@ -31,13 +31,15 @@ GitHub Free per organizzazioni comprende una quota mensile di minuti/storage, no
 
 ## Condizioni del merge automatico
 
-Il chiamante di esempio aspetta l'intero workflow **CI progetto**. Lo script richiede i job esatti `CI progetto`, `sicurezza / Sicurezza`, `Revisione AI`, tutti `completed/success`. Se GitHub restituisce un nome diverso nel repository reale, controllarlo con `gh api repos/ducklink-team/NOME/actions/runs/ID/jobs --jq '.jobs[].name'` e aggiornare gli input `controlli` (array JSON) e `revisione`. Un nome assente, duplicato o saltato sospende il merge.
+Il chiamante di esempio aspetta l'intero workflow **CI progetto**. Lo script richiede i job esatti `CI progetto`, `sicurezza / Sicurezza` (input `controlli`), tutti `completed/success`. Se GitHub restituisce un nome diverso nel repository reale, controllarlo con `gh api repos/ducklink-team/NOME/actions/runs/ID/jobs --jq '.jobs[].name'` e aggiornare l'input `controlli` (array JSON). Un nome assente, duplicato o saltato sospende il merge.
 
-`scripts/revisione-ai.mjs` del modello restituisce 0 con `verdetto: OK`, 1 con BLOCK e diagnostica `BLOCK file:riga`; può anche saltare la revisione tramite `REVISIONE_FACOLTATIVA`. L'adattatore `scripts/revisione.mjs` richiede la chiave, imposta `REVISIONE_FACOLTATIVA=0`, elimina `FUXX_OPENROUTER_FINTO`, controlla l'esito e pubblica una sola riga `FUXX_REVISIONE={"verdetto":"OK","sha":"..."}`. Il merge legge i log del job AI del run concluso e richiede quel marcatore sullo SHA corrente; non accetta il solo colore verde. La chiave `OPENROUTER_API_KEY` resta quella del progetto, con tetto già concordato. Nessuna chiamata a pagamento è stata eseguita per verificare questa corsia.
+**Revisione AI (cambiata, breaking).** La revisione non gira più nel workflow CI della PR e non esegue più alcuno script della PR. La esegue `scripts/revisione.mjs` di fuxx-ci dentro il job di merge (`workflow_run` sul ramo predefinito): scarica il diff della PR come semplice testo non attendibile, lo manda al modello OpenRouter e accetta solo la risposta esatta `VERDETTO: OK`; qualunque altra cosa, errore, timeout o diff oltre 150000 caratteri sospende il merge. `OPENROUTER_API_KEY` è un secret del solo workflow di merge e non è mai visibile a codice o workflow definiti dalla PR. Il modello è l'input obbligatorio `modello-revisione` (nessun default: lo sceglie il CEO). Resta un rischio residuo di prompt injection nel diff; per i file sensibili si ferma comunque il controllo a rischio sotto.
+
+**Provenienza dei controlli.** Una PR esegue la CI definita nel proprio ramo, quindi i nomi dei job da soli non provano nulla. Il merge richiede: run con `event=pull_request` e SHA corrente, `path` uguale al workflow indicato in `workflow-ci` (default `.github/workflows/ci.yml`), file di quel workflow identico (stesso blob) allo SHA della PR e sul ramo `main`, ogni job obbligatorio unico, `completed/success`, con check-run emesso dall'app `github-actions` per lo stesso SHA. Per cambiare il workflow CI serve quindi passare dal controllo file a rischio (`.github/**`) e dall'OK del responsabile.
 
 Si ferma su PR chiusa, bozza, fork, base diversa da `main`, `non-unire`, `serve-ok`, revisione BLOCK/assente, SHA cambiato, job mancanti/rossi. I file sono paginati; il limite GitHub di 3000 file provoca arresto conservativo. Controlla anche il nome precedente delle rinomine.
 
-File a rischio: `specs/**/contratto-api.md`, `specs/**/spec.md`, cartelle `migrations` a qualsiasi profondità, `db/**`, cartelle `auth`, `middleware.*` a qualsiasi profondità, SQL contenenti la parola `policy`, `.github/**`, `.env.example`, `.fuxx/**`, `CODEOWNERS`. Per SQL non eliminati legge il contenuto completo allo SHA della PR, così una policy fuori dal diff viene rilevata. SQL eliminati senza patch, contenuti non disponibili e rinomine da SQL vengono fermati prudentemente.
+File a rischio (percorso normalizzato: maiuscole, `//`, `.`/`..`, backslash; a qualsiasi profondità): segmenti `db`, `auth`, `middleware`, `.github`, `.fuxx`; cartelle il cui nome contiene `migration`; `contratto-api.md`/`spec.md` sotto una cartella `specs`; file `middleware.*`, `codeowners*`, `.env*`, `.gitleaks*`, `.semgrep*`; SQL (`.sql`, `.psql`, `.pgsql`, `.ddl`) contenenti la parola `policy`. Per SQL non eliminati legge il contenuto completo allo SHA della PR, così una policy fuori dal diff viene rilevata. SQL eliminati senza patch, contenuti non disponibili e rinomine da SQL vengono fermati prudentemente.
 
 Su file a rischio applica `serve-ok` e commenta **"serve l'OK del responsabile: <file>"**. Togliere l'etichetta non autorizza il bot a ignorare il rischio: il responsabile dovrà approvare e unire manualmente secondo D-51. Non esiste un comando bot per dare quell'OK.
 
@@ -91,3 +93,11 @@ npm test
 Il comando della radice **non include i test di `fuxx-ci`**: l'integratore deve aggiungere il primo comando alla suite dopo il merge. Non è stato modificato `package.json` della radice perché fuori corsia. Nel futuro repository standalone usare `npm test` dalla sua radice.
 
 La verifica locale copre decisioni di merge con `gh` simulato che registra gli argomenti, header, licenze e adattatore AI. I sei YAML sono verificati con actionlint. Restano da provare realmente: accesso privato, nomi dei job Actions, esecuzione scanner Linux/Docker, revisione con chiave reale, merge e dispatch demo, onboarding Renovate, quota minuti. Nessun risultato locale simula una prova riuscita su GitHub.
+
+## Scanner di sicurezza e file della PR
+
+I file che la PR potrebbe usare per spegnere gli scanner non sono ammessi: il workflow `sicurezza` fallisce se il progetto traccia `.semgrepignore`, `.gitleaksignore`, `gitleaks*.toml`, `.semgrep.yml` o una cartella `__fuxx_ci` (a qualsiasi profondità). Gitleaks usa `config/gitleaks.toml` di fuxx-ci e `--ignore-gitleaks-allow`; Semgrep usa `--no-git-ignore` e `--disable-nosem`.
+
+**Attenzione:** `--disable-nosem` rende inutili tutti i commenti `# nosemgrep` dei progetti: ogni finding Semgrep blocca, senza eccezioni locali. Un falso positivo va risolto cambiando il codice.
+
+**Migrazione da versioni precedenti di @v1 (breaking).** In ogni progetto: togliere il job `revisione` da `ci.yml`; in `merge.yml` passare `modello-revisione` e il secret `OPENROUTER_API_KEY`; togliere l'input `revisione`; rimuovere eventuali `.semgrepignore`/`.gitleaksignore`. Il tag `v1` va riposizionato solo dopo la revisione umana di questa modifica.
