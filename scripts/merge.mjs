@@ -22,6 +22,18 @@ export function leggiRevisione(log, sha) {
   } catch { return 'SCONOSCIUTA'; }
 }
 
+export function leggiCommentoRevisore(commenti, sha) {
+  const candidati = commenti.filter(commento => commento?.user?.login === 'doubledrag33'
+    && typeof commento.body === 'string'
+    && commento.body.split(/\r?\n/).some(riga => /^ESITO:\s*/.test(riga)));
+  const ultimo = candidati.at(-1);
+  if (!ultimo) return 'SCONOSCIUTA';
+  const righe = ultimo.body.split(/\r?\n/);
+  const esito = righe.find(riga => /^ESITO:\s*/.test(riga))?.match(/^ESITO:\s*(OK|BLOCCA)\s*$/)?.[1];
+  const commentoSha = righe.find(riga => /^SHA:\s*/.test(riga))?.match(/^SHA:\s*(\S+)\s*$/)?.[1];
+  return esito === 'OK' && commentoSha === sha ? 'OK' : (esito === 'BLOCCA' ? 'BLOCCA' : 'SCONOSCIUTA');
+}
+
 function ghReale(args) {
   try { return execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 20 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] }); }
   catch (errore) {
@@ -33,9 +45,9 @@ function ghReale(args) {
 }
 
 export function eseguiMerge(dati, gh = ghReale) {
-  const { repository, numero, runId, sha, controlli, revisione } = dati;
+  const { repository, numero, runId, sha, controlli, revisione, modo = 'job-ci' } = dati;
   if (!/^[\w.-]+\/[\w.-]+$/.test(repository) || !/^\d+$/.test(String(numero)) || !/^\d+$/.test(String(runId)) || !/^[a-f\d]{40}$/.test(sha)) throw new Error('Identificativi PR non validi');
-  if (!Array.isArray(controlli) || !controlli.length || !revisione) throw new Error('Controlli obbligatori mancanti');
+  if (!Array.isArray(controlli) || !controlli.length || !revisione || !['job-ci', 'commento-revisore'].includes(modo)) throw new Error('Controlli obbligatori o modo di revisione non validi');
   const api = endpoint => JSON.parse(gh(['api', `repos/${repository}/${endpoint}`]));
   const pagine = endpoint => JSON.parse(gh(['api', `repos/${repository}/${endpoint}`, '--paginate', '--slurp']));
   const ferma = motivo => ({ unita: false, motivo });
@@ -59,12 +71,17 @@ export function eseguiMerge(dati, gh = ghReale) {
     return ferma('File a rischio: serve OK del responsabile');
   }
   const jobs = pagine(`actions/runs/${runId}/jobs`).flatMap(p => p.jobs);
-  for (const nome of [...controlli, revisione]) {
+  for (const nome of [...controlli, ...(modo === 'job-ci' ? [revisione] : [])]) {
     const trovati = jobs.filter(j => j.name === nome);
     if (trovati.length !== 1 || trovati[0].status !== 'completed' || trovati[0].conclusion !== 'success') return ferma(`Controllo non verde: ${nome}`);
   }
-  const job = jobs.find(j => j.name === revisione);
-  if (leggiRevisione(gh(['api', `repos/${repository}/actions/jobs/${job.id}/logs`]), sha) !== 'OK') return ferma('Revisione BLOCK, mancante o non riferita allo SHA corrente');
+  if (modo === 'commento-revisore') {
+    const commenti = pagine(`issues/${numero}/comments`).flat();
+    if (leggiCommentoRevisore(commenti, sha) !== 'OK') return ferma('Revisione commento mancante, BLOCCA o non riferita allo SHA corrente');
+  } else {
+    const job = jobs.find(j => j.name === revisione);
+    if (leggiRevisione(gh(['api', `repos/${repository}/actions/jobs/${job.id}/logs`]), sha) !== 'OK') return ferma('Revisione BLOCK, mancante o non riferita allo SHA corrente');
+  }
   if (!ammessa(api(`pulls/${numero}`))) return ferma('PR cambiata durante i controlli');
   // Leggere prima del merge: un 403 non è equivalente a "demo assente".
   let demo = true;
@@ -82,7 +99,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     if (!run || run.event !== 'pull_request' || run.conclusion !== 'success' || run.repository?.full_name && run.repository.full_name !== process.env.GITHUB_REPOSITORY) throw new Error('Richiesta ammessa solo dopo workflow_run PR concluso con successo');
     const risultati = (run.pull_requests ?? []).map(pr => eseguiMerge({
       repository: process.env.GITHUB_REPOSITORY, numero: pr.number, runId: run.id, sha: run.head_sha,
-      controlli: JSON.parse(process.env.CONTROLLI_OBBLIGATORI), revisione: process.env.NOME_REVISIONE,
+      controlli: JSON.parse(process.env.CONTROLLI_OBBLIGATORI), revisione: process.env.NOME_REVISIONE, modo: process.env.MODO_REVISIONE,
     }));
     const testo = risultati.length ? risultati.map(r => r.unita ? `Merge eseguito; demo: ${r.demo ? 'avviata' : 'assente'}` : `Merge sospeso: ${r.motivo}`).join('\n') : 'Nessuna PR associata: nessun merge';
     console.log(testo);

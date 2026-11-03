@@ -53,4 +53,4 @@ jobs:
           BASE_REF: origin/${{ github.base_ref }}
           PR_SHA: ${{ github.event.pull_request.head.sha }}
         run: node __fuxx_ci/scripts/revisione.mjs scripts/revisione-ai.mjs
-# Affiancare merge-progetto.yml: richiama merge-automatico.yml@v1 dopo questo workflow.
+# Affiancare merge-progetto.yml: richiama merge-automatico.yml@v2 dopo questo workflow.
