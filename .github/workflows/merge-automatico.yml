@@ -9,12 +9,17 @@ on:
       revisione:
         type: string
         default: Revisione AI
+        description: Nome del job di revisione richiesto con modo job-ci
+      modo:
+        type: string
+        default: job-ci
+        description: 'Modalita revisione: job-ci oppure commento-revisore'
       versione-ci:
         type: string
         default: v1
     secrets:
       LETTURA_CI:
-        required: true
+        required: false
 permissions:
   contents: write
   pull-requests: write
@@ -34,7 +39,7 @@ jobs:
         with:
           repository: ducklink-team/fuxx-ci
           ref: ${{ inputs.versione-ci }}
-          token: ${{ secrets.LETTURA_CI }}
+          token: ${{ secrets.LETTURA_CI || github.token }}
           path: __fuxx_ci
           persist-credentials: false
       - uses: actions/setup-node@v6
@@ -45,4 +50,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           CONTROLLI_OBBLIGATORI: ${{ inputs.controlli }}
           NOME_REVISIONE: ${{ inputs.revisione }}
+          MODO_REVISIONE: ${{ inputs.modo }}
         run: node __fuxx_ci/scripts/merge.mjs

@@ -11,6 +11,8 @@ permissions:
   actions: write
 jobs:
   merge:
-    uses: ducklink-team/fuxx-ci/.github/workflows/merge-automatico.yml@v1
+    uses: ducklink-team/fuxx-ci/.github/workflows/merge-automatico.yml@v2
+    with:
+      modo: commento-revisore
     secrets:
       LETTURA_CI: ${{ secrets.LETTURA_CI }}

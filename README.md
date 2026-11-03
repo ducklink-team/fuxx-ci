@@ -1,6 +1,6 @@
 # fuxx-ci — CI centrale FUXX
 
-Cartella pronta a diventare la radice di `ducklink-team/fuxx-ci`, dopo il merge della corsia G. Qui non sono stati creati repository, tag o impostazioni dell'organizzazione. Tutti gli esempi usano `@v1`: il tag dovrà esistere nel repository pubblicato. Gli script sono Node ESM, senza dipendenze del progetto.
+Cartella pronta a diventare la radice di `ducklink-team/fuxx-ci`, dopo il merge della corsia G. Qui non sono stati creati repository, tag o impostazioni dell'organizzazione. L'esempio di merge usa `@v2`: il tag dovrà esistere nel repository pubblicato. Gli script sono Node ESM, senza dipendenze del progetto.
 
 ## Contenuto e utilizzo
 
@@ -9,7 +9,7 @@ Cartella pronta a diventare la radice di `ducklink-team/fuxx-ci`, dopo il merge 
 - `.github/workflows/controllo-sito.yml`: header, ZAP baseline passivo, riepilogo e rapporto conservato sette giorni.
 - `scripts/`: decisioni verificabili con `node --test`; `renovate/default.json`: preset condiviso.
 
-Copiare `esempi/ci-progetto.yml` in `.github/workflows/ci.yml` del progetto e **anche** `esempi/merge-progetto.yml` in `.github/workflows/merge.yml`. Servono due workflow: CI su `pull_request`, merge privilegiato su `workflow_run` concluso. Non usare `pull_request_target` per eseguire codice PR. Il workflow di merge deve essere già sul ramo predefinito. Il progetto deve fornire gli script npm indicati nell'esempio e `scripts/revisione-ai.mjs` del modello.
+Copiare `esempi/ci-progetto.yml` in `.github/workflows/ci.yml` del progetto e **anche** `esempi/merge-progetto.yml` in `.github/workflows/merge.yml`. Servono due workflow: CI su `pull_request`, merge privilegiato su `workflow_run` concluso. Non usare `pull_request_target` per eseguire codice PR. Il workflow di merge deve essere già sul ramo predefinito. Il progetto deve fornire gli script npm indicati nell'esempio; `scripts/revisione-ai.mjs` del modello serve solo se si sceglie la revisione tramite job legacy.
 
 Per il controllo settimanale copiare `esempi/controllo-settimanale.yml`, impostare la variabile repository `DEMO_URL` con l'URL HTTPS della demo autorizzata. Il cron è lunedì alle 04:23 UTC. Un workflow solo `workflow_call` non si pianifica da sé.
 
@@ -23,7 +23,7 @@ L'inventario include dipendenze transitive e di sviluppo installate. Lista conse
 
 Nel futuro repository centrale: **Settings → Actions → General → Access → Accessible from repositories in the 'ducklink-team' organization → Save**. Nel chiamante la policy Actions deve consentire workflow e azioni utilizzati. Per scaricare il workflow GitHub fornisce un token d'installazione temporaneo. [Istruzioni ufficiali di condivisione](https://docs.github.com/en/actions/how-tos/reuse-automations/share-with-your-organization).
 
-**Scaricare il workflow e fare checkout degli script sono operazioni diverse.** Il normale `GITHUB_TOKEN` del chiamante è limitato al proprio repository: gli esempi passano il secret `LETTURA_CI` per il checkout di `ducklink-team/fuxx-ci`. Usare un token fine-grained con sola permission **Contents: read**, solo sul repository centrale e con scadenza, oppure un installation token di una GitHub App con lo stesso accesso. Configurarlo nei repository chiamanti; nessun valore va nei file. Il checkout disabilita `persist-credentials`. Vedi [checkout di un altro repository privato](https://github.com/actions/checkout#checkout-multiple-repos-private).
+**Scaricare il workflow e fare checkout degli script sono operazioni diverse.** `ducklink-team/fuxx-ci` è pubblico, quindi il workflow riusabile funziona anche senza `LETTURA_CI`; se il secret è configurato lo usa ancora, altrimenti usa il token del workflow. Per un repository centrale privato usare un token fine-grained con sola permission **Contents: read**, solo sul repository centrale e con scadenza, oppure un installation token di una GitHub App con lo stesso accesso. Configurarlo nei repository chiamanti; nessun valore va nei file. Il checkout disabilita `persist-credentials`. Vedi [checkout di un altro repository privato](https://github.com/actions/checkout#checkout-multiple-repos-private).
 
 L'input `versione-ci` deve corrispondere al tag del workflow chiamato (default `v1`). Aggiornare insieme `uses: ...@vN`, checkout dell'adattatore AI ed eventuale input. Le azioni sono versionate per major; gli strumenti pip e il registro delle regole Semgrep sono aggiornati a ogni run. Renovate ne segnala gli aggiornamenti dove supportati.
 
@@ -31,9 +31,9 @@ GitHub Free per organizzazioni comprende una quota mensile di minuti/storage, no
 
 ## Condizioni del merge automatico
 
-Il chiamante di esempio aspetta l'intero workflow **CI progetto**. Lo script richiede i job esatti `CI progetto`, `sicurezza / Sicurezza`, `Revisione AI`, tutti `completed/success`. Se GitHub restituisce un nome diverso nel repository reale, controllarlo con `gh api repos/ducklink-team/NOME/actions/runs/ID/jobs --jq '.jobs[].name'` e aggiornare gli input `controlli` (array JSON) e `revisione`. Un nome assente, duplicato o saltato sospende il merge.
+Il chiamante di esempio aspetta l'intero workflow **CI progetto**. Lo script richiede i job esatti `CI progetto`, `sicurezza / Sicurezza` e, con `modo: job-ci` (default), il job indicato da `revisione` (default `Revisione AI`): tutti devono essere `completed/success`. La modalità `modo: commento-revisore` usa invece l'ultimo commento di `doubledrag33` che contiene una riga `ESITO:`: deve avere `ESITO: OK` e una riga `SHA:` uguale allo SHA completo della PR. Se GitHub restituisce un nome diverso nel repository reale, controllarlo con `gh api repos/ducklink-team/NOME/actions/runs/ID/jobs --jq '.jobs[].name'` e aggiornare gli input `controlli` (array JSON) e `revisione`. Un nome assente, duplicato o saltato sospende il merge.
 
-`scripts/revisione-ai.mjs` del modello restituisce 0 con `verdetto: OK`, 1 con BLOCK e diagnostica `BLOCK file:riga`; può anche saltare la revisione tramite `REVISIONE_FACOLTATIVA`. L'adattatore `scripts/revisione.mjs` richiede la chiave, imposta `REVISIONE_FACOLTATIVA=0`, elimina `FUXX_OPENROUTER_FINTO`, controlla l'esito e pubblica una sola riga `FUXX_REVISIONE={"verdetto":"OK","sha":"..."}`. Il merge legge i log del job AI del run concluso e richiede quel marcatore sullo SHA corrente; non accetta il solo colore verde. La chiave `OPENROUTER_API_KEY` resta quella del progetto, con tetto già concordato. Nessuna chiamata a pagamento è stata eseguita per verificare questa corsia.
+`scripts/revisione-ai.mjs` del modello restituisce 0 con `verdetto: OK`, 1 con BLOCK e diagnostica `BLOCK file:riga`; può anche saltare la revisione tramite `REVISIONE_FACOLTATIVA`. L'adattatore `scripts/revisione.mjs` richiede la chiave, imposta `REVISIONE_FACOLTATIVA=0`, elimina `FUXX_OPENROUTER_FINTO`, controlla l'esito e pubblica una sola riga `FUXX_REVISIONE={"verdetto":"OK","sha":"..."}`. In `modo: job-ci`, `Revisione AI` resta obbligatorio per impostazione predefinita e il log deve contenere il marcatore sullo SHA corrente; non basta il job verde. Nell'esempio si usa `modo: commento-revisore` con `ESITO` e `SHA`. La chiave `OPENROUTER_API_KEY` resta quella del progetto, con tetto già concordato. Nessuna chiamata a pagamento è stata eseguita per verificare questa corsia.
 
 Si ferma su PR chiusa, bozza, fork, base diversa da `main`, `non-unire`, `serve-ok`, revisione BLOCK/assente, SHA cambiato, job mancanti/rossi. I file sono paginati; il limite GitHub di 3000 file provoca arresto conservativo. Controlla anche il nome precedente delle rinomine.
 
