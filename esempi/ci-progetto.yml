@@ -27,30 +27,6 @@ jobs:
       linguaggio: node
     secrets:
       LETTURA_CI: ${{ secrets.LETTURA_CI }}
-  revisione:
-    name: Revisione AI
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
-      - uses: actions/checkout@v5
-        with:
-          repository: ducklink-team/fuxx-ci
-          ref: v1
-          token: ${{ secrets.LETTURA_CI }}
-          path: __fuxx_ci
-          persist-credentials: false
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-      - name: Revisione obbligatoria con verdetto e SHA
-        env:
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          BASE_REF: origin/${{ github.base_ref }}
-          PR_SHA: ${{ github.event.pull_request.head.sha }}
-        run: node __fuxx_ci/scripts/revisione.mjs scripts/revisione-ai.mjs
+# La revisione AI non sta in questo workflow: il codice della PR non deve mai ricevere la chiave OpenRouter.
+# Il revisore locale scrive il commento ESITO sullo SHA di testa, letto da merge-progetto.yml.
 # Affiancare merge-progetto.yml: richiama merge-automatico.yml@v2 dopo questo workflow.
