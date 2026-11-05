@@ -74,11 +74,78 @@ export function leggiCommentoRevisore(commenti, sha, base) {
 function ghReale(args) {
   try { return execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 20 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] }); }
   catch (errore) {
+    // Con --include anche gh non-zero conserva su stdout stato e corpo REST.
+    // Il chiamante li interpreta senza stampare messaggi remoti.
+    if (args.includes('--include') && /^HTTP\/\S+ \d{3}/.test(String(errore.stdout))) return String(errore.stdout);
     // Non stampare log della revisione o contenuti remoti, potenzialmente sensibili.
     const e = new Error('Chiamata GitHub CLI fallita');
-    if (/HTTP 404/.test(String(errore.stderr))) e.status = 404;
+    const status = String(errore.stderr).match(/HTTP (\d{3})/);
+    if (status) e.status = Number(status[1]);
     throw e;
   }
+}
+
+// --raw-field mantiene letterali SHA, ref e titolo; --field serializza i booleani JSON.
+function scriviApi(gh, repository, metodo, endpoint, dati = {}) {
+  const args = ['api', `repos/${repository}/${endpoint}`, '--method', metodo, '--include'];
+  for (const [nome, valore] of Object.entries(dati)) args.push(typeof valore === 'boolean' ? '-F' : '-f', `${nome}=${valore}`);
+  const risposta = gh(args);
+  const status = Number(risposta.match(/^HTTP\/\S+ (\d{3})\b/)?.[1]);
+  const testo = risposta.split(/\r?\n\r?\n/).slice(1).join('\n\n');
+  if (!status) throw new Error('Risposta API GitHub senza stato HTTP');
+  if (status >= 400) {
+    const e = new Error('Chiamata API GitHub fallita');
+    e.status = status;
+    e.protezione = /protected branch|branch protection|repository rule|rule violations|GH006|GH013/i.test(testo);
+    throw e;
+  }
+  return { status, dati: testo.trim() ? JSON.parse(testo) : null };
+}
+
+function mergeCommentoRevisore(repository, numero, sha, pr, gh, api, ferma) {
+  // Base già confrontata con la prima riga Base: del commento approvato.
+  const base = pr.base.sha;
+  const temporaneo = `fuxx-merge/${numero}-${sha.slice(0, 8)}`;
+  const refTemporaneo = `git/refs/heads/${temporaneo}`;
+  const ramo = pr.base.ref.split('/').map(encodeURIComponent).join('/');
+  const scrivi = (metodo, endpoint, dati) => scriviApi(gh, repository, metodo, endpoint, dati);
+  // Se la creazione fallisce (anche per collisione), non cancellare un ref altrui.
+  scrivi('POST', 'git/refs', { ref: `refs/heads/${temporaneo}`, sha: base });
+  try {
+    let unione;
+    try {
+      unione = scrivi('POST', 'merges', {
+        base: temporaneo, head: sha,
+        commit_message: `Merge PR #${numero}: ${pr.title} (revisore OK su ${sha.slice(0, 8)}, base ${base.slice(0, 8)})`,
+      });
+    } catch (e) {
+      if (e.status === 409) return ferma('conflitto durante il merge sulla base approvata');
+      throw e;
+    }
+    if (unione.status === 204) return ferma('niente da unire sulla base approvata');
+    if (unione.status !== 201 || !/^[a-f\d]{40}$/.test(unione.dati?.sha)) return ferma('commit di unione non verificabile');
+    const genitori = unione.dati.parents;
+    if (!Array.isArray(genitori) || genitori.length !== 2 || genitori[0].sha !== base || genitori[1].sha !== sha) return ferma('genitori del commit di unione diversi dalla coppia approvata');
+    try {
+      // Il fast-forward rifiuta avanzamenti di main esterni alla storia approvata.
+      scrivi('PATCH', `git/refs/heads/${ramo}`, { sha: unione.dati.sha, force: false });
+    } catch (e) {
+      if (![403, 422].includes(e.status)) throw e;
+      if (!e.protezione) return ferma(e.status === 422 ? 'main avanzato durante il merge: riprovo al giro dopo' : 'merge non vincolabile alla base: serve OK');
+      let protezione;
+      try { protezione = api(`branches/${ramo}/protection`); }
+      catch (errore) { if (![403, 404].includes(errore.status)) throw errore; }
+      if (protezione?.required_status_checks?.strict !== true) return ferma('merge non vincolabile alla base: serve OK');
+      gh(['pr', 'merge', String(numero), '--repo', repository, '--merge', '--match-head-commit', sha]);
+    }
+  } finally {
+    scrivi('DELETE', refTemporaneo);
+  }
+  if (pr.head.repo?.full_name === repository && pr.head.ref && pr.head.ref !== pr.base.ref) {
+    const testa = pr.head.ref.split('/').map(encodeURIComponent).join('/');
+    scrivi('DELETE', `git/refs/heads/${testa}`);
+  }
+  return null;
 }
 
 export function eseguiMerge(dati, gh = ghReale) {
@@ -136,7 +203,12 @@ export function eseguiMerge(dati, gh = ghReale) {
   const prFinale = api(`pulls/${numero}`);
   if (!ammessa(prFinale)) return ferma('PR cambiata durante i controlli');
   if (modo === 'commento-revisore' && leggiCommentoRevisore(commenti, sha, prFinale.base?.sha) !== 'OK') return ferma('Revisione commento mancante, BLOCCA o non riferita allo SHA corrente o alla base corrente');
-  gh(['pr', 'merge', String(numero), '--repo', repository, '--squash', '--delete-branch', '--match-head-commit', sha]);
+  if (modo === 'commento-revisore') {
+    const arresto = mergeCommentoRevisore(repository, numero, sha, prFinale, gh, api, ferma);
+    if (arresto) return arresto;
+  } else {
+    gh(['pr', 'merge', String(numero), '--repo', repository, '--squash', '--delete-branch', '--match-head-commit', sha]);
+  }
   // GITHUB_TOKEN non innesca push: workflow_dispatch è un'eccezione documentata.
   if (demo) gh(['workflow', 'run', 'demo.yml', '--repo', repository, '--ref', 'main']);
   return { unita: true, demo };
