@@ -86,7 +86,7 @@ function ghReale(args) {
 }
 
 // --raw-field mantiene letterali SHA, ref e titolo; --field serializza i booleani JSON.
-function scriviApi(gh, repository, metodo, endpoint, dati = {}) {
+function scriviApi(gh, repository, metodo, endpoint, dati = {}, leggiCorpo = false) {
   const args = ['api', `repos/${repository}/${endpoint}`, '--method', metodo, '--include'];
   for (const [nome, valore] of Object.entries(dati)) args.push(typeof valore === 'boolean' ? '-F' : '-f', `${nome}=${valore}`);
   const risposta = gh(args);
@@ -99,16 +99,17 @@ function scriviApi(gh, repository, metodo, endpoint, dati = {}) {
     e.protezione = /protected branch|branch protection|repository rule|rule violations|GH006|GH013/i.test(testo);
     throw e;
   }
-  return { status, dati: testo.trim() ? JSON.parse(testo) : null };
+  // Un corpo non usato o troncato non deve annullare un effetto remoto già riuscito.
+  return { status, dati: leggiCorpo && testo.trim() ? JSON.parse(testo) : null };
 }
 
-function mergeCommentoRevisore(repository, numero, sha, pr, gh, api, ferma) {
+function mergeCommentoRevisore(repository, numero, sha, pr, gh, api, ferma, avvisa) {
   // Base già confrontata con la prima riga Base: del commento approvato.
   const base = pr.base.sha;
   const temporaneo = `fuxx-merge/${numero}-${sha.slice(0, 8)}`;
   const refTemporaneo = `git/refs/heads/${temporaneo}`;
   const ramo = pr.base.ref.split('/').map(encodeURIComponent).join('/');
-  const scrivi = (metodo, endpoint, dati) => scriviApi(gh, repository, metodo, endpoint, dati);
+  const scrivi = (metodo, endpoint, dati, leggiCorpo) => scriviApi(gh, repository, metodo, endpoint, dati, leggiCorpo);
   // Se la creazione fallisce (anche per collisione), non cancellare un ref altrui.
   scrivi('POST', 'git/refs', { ref: `refs/heads/${temporaneo}`, sha: base });
   try {
@@ -117,7 +118,7 @@ function mergeCommentoRevisore(repository, numero, sha, pr, gh, api, ferma) {
       unione = scrivi('POST', 'merges', {
         base: temporaneo, head: sha,
         commit_message: `Merge PR #${numero}: ${pr.title} (revisore OK su ${sha.slice(0, 8)}, base ${base.slice(0, 8)})`,
-      });
+      }, true);
     } catch (e) {
       if (e.status === 409) return ferma('conflitto durante il merge sulla base approvata');
       throw e;
@@ -139,11 +140,28 @@ function mergeCommentoRevisore(repository, numero, sha, pr, gh, api, ferma) {
       gh(['pr', 'merge', String(numero), '--repo', repository, '--merge', '--match-head-commit', sha]);
     }
   } finally {
-    scrivi('DELETE', refTemporaneo);
+    try { scrivi('DELETE', refTemporaneo); }
+    catch { avvisa('ramo temporaneo lasciato: pulizia fallita'); }
   }
   if (pr.head.repo?.full_name === repository && pr.head.ref && pr.head.ref !== pr.base.ref) {
-    const testa = pr.head.ref.split('/').map(encodeURIComponent).join('/');
-    scrivi('DELETE', `git/refs/heads/${testa}`);
+    try {
+      if (typeof pr.base.repo.node_id !== 'string' || !pr.base.repo.node_id) {
+        avvisa('ramo lasciato: identificativo GraphQL del repository assente');
+      } else {
+        // beforeOid e cancellazione sono un solo effetto atomico: mai un DELETE REST.
+        // Schema: https://docs.github.com/en/graphql/reference/git#updaterefs
+        const query = `mutation($repositoryId: ID!, $name: GitRefname!, $beforeOid: GitObjectID!, $afterOid: GitObjectID!, $force: Boolean!) {
+          updateRefs(input: { repositoryId: $repositoryId, refUpdates: [{ name: $name, beforeOid: $beforeOid, afterOid: $afterOid, force: $force }] }) { clientMutationId }
+        }`;
+        const risposta = JSON.parse(gh(['api', 'graphql', '-f', `query=${query}`,
+          '-f', `repositoryId=${pr.base.repo.node_id}`, '-f', `name=refs/heads/${pr.head.ref}`,
+          '-f', `beforeOid=${sha}`, '-f', `afterOid=${'0'.repeat(40)}`, '-F', 'force=false']));
+        // GraphQL può restituire errori anche con HTTP 200; nessun ripiego non condizionato.
+        if (risposta?.errors?.length || !risposta?.data?.updateRefs) throw new Error('updateRefs non confermato');
+      }
+    } catch {
+      avvisa('ramo lasciato: updateRefs rifiutato o non disponibile');
+    }
   }
   return null;
 }
@@ -203,15 +221,26 @@ export function eseguiMerge(dati, gh = ghReale) {
   const prFinale = api(`pulls/${numero}`);
   if (!ammessa(prFinale)) return ferma('PR cambiata durante i controlli');
   if (modo === 'commento-revisore' && leggiCommentoRevisore(commenti, sha, prFinale.base?.sha) !== 'OK') return ferma('Revisione commento mancante, BLOCCA o non riferita allo SHA corrente o alla base corrente');
+  const avvisi = [];
+  const avvisa = motivo => { avvisi.push(motivo); console.warn(`Avviso: ${motivo}`); };
   if (modo === 'commento-revisore') {
-    const arresto = mergeCommentoRevisore(repository, numero, sha, prFinale, gh, api, ferma);
+    const arresto = mergeCommentoRevisore(repository, numero, sha, prFinale, gh, api, ferma, avvisa);
     if (arresto) return arresto;
   } else {
     gh(['pr', 'merge', String(numero), '--repo', repository, '--squash', '--delete-branch', '--match-head-commit', sha]);
   }
   // GITHUB_TOKEN non innesca push: workflow_dispatch è un'eccezione documentata.
-  if (demo) gh(['workflow', 'run', 'demo.yml', '--repo', repository, '--ref', 'main']);
-  return { unita: true, demo };
+  let demoFallita = false;
+  if (demo) {
+    try { gh(['workflow', 'run', 'demo.yml', '--repo', repository, '--ref', 'main']); }
+    catch (e) {
+      if (modo !== 'commento-revisore') throw e;
+      demo = false;
+      demoFallita = true;
+      avvisa('demo non avviata: dispatch fallito; rilanciare demo.yml manualmente su main');
+    }
+  }
+  return { unita: true, demo, ...(demoFallita ? { demoFallita } : {}), ...(avvisi.length ? { avvisi } : {}) };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
@@ -223,8 +252,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       repository: process.env.GITHUB_REPOSITORY, numero: pr.number, runId: run.id, sha: run.head_sha,
       controlli: JSON.parse(process.env.CONTROLLI_OBBLIGATORI), revisione: process.env.NOME_REVISIONE, modo: process.env.MODO_REVISIONE,
     }));
-    const testo = risultati.length ? risultati.map(r => r.unita ? `Merge eseguito; demo: ${r.demo ? 'avviata' : 'assente'}` : `Merge sospeso: ${r.motivo}`).join('\n') : 'Nessuna PR associata: nessun merge';
+    const testo = risultati.length ? risultati.map(r => [r.unita ? `Merge eseguito; demo: ${r.demo ? 'avviata' : r.demoFallita ? 'non avviata' : 'assente'}` : `Merge sospeso: ${r.motivo}`, ...(r.avvisi ?? []).map(a => `Avviso: ${a}`)].join('\n')).join('\n') : 'Nessuna PR associata: nessun merge';
     console.log(testo);
-    if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${testo}\n`);
+    if (process.env.GITHUB_STEP_SUMMARY) {
+      try { appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${testo}\n`); }
+      catch (e) {
+        if (process.env.MODO_REVISIONE !== 'commento-revisore' || !risultati.some(r => r.unita)) throw e;
+        console.warn('Avviso: riepilogo non scritto; il merge è già eseguito, consultare il log');
+      }
+    }
   } catch (e) { console.error(e.message); process.exitCode = 1; }
 }

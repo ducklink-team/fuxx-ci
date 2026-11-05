@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { eseguiMerge } from '../merge.mjs';
 
 const sha = 'a'.repeat(40);
@@ -25,9 +28,11 @@ function risposta(status, body) { return `HTTP/2.0 ${status}\r\nContent-Type: ap
 
 function http404() { const e = new Error('HTTP 404: Not Found'); e.status = 404; return e; }
 
-function scenario({ commenti = [], autore = 'doubledrag33', label = false, files = [{ filename: 'src/page.tsx' }], jobs = [], evento = 'pull_request', percorso = '.github/workflows/ci.yml', senzaWorkflowSuMain = false, blobPr = 'blob-main', shaJobs = sha, baseSha = baseApprovata, baseShaFinal = baseSha, baseRiletta = baseShaFinal, mergeStatus = 201, patchStatus = 200, patchProtezione = false, protezione = {}, erroreProtezione, createStatus = 201, erroreMerge = false, errorePulizia = false, erroreRipiego = false, parents = [baseShaFinal, sha], titolo = 'Pagina nuova', headRef = 'feat/pagina' } = {}) {
+function scenario({ commenti = [], autore = 'doubledrag33', label = false, files = [{ filename: 'src/page.tsx' }], jobs = [], evento = 'pull_request', percorso = '.github/workflows/ci.yml', senzaWorkflowSuMain = false, blobPr = 'blob-main', shaJobs = sha, baseSha = baseApprovata, baseShaFinal = baseSha, baseRiletta = baseShaFinal, mergeStatus = 201, patchStatus = 200, patchProtezione = false, protezione = {}, erroreProtezione, createStatus = 201, erroreMerge = false, errorePulizia = false, erroreRipiego = false, parents = [baseShaFinal, sha], titolo = 'Pagina nuova', headRef = 'feat/pagina', headRepo = 'org/progetto', repositoryId = 'R_progetto', pushDopoApprovazione = false, erroreUpdateRefs = false, rispostaUpdateRefs, erroreDispatch = false, senzaDemo = false, corpoCreazione = undefined, corpoPatch = undefined } = {}) {
   const comandi = [];
   let prLette = 0;
+  let ramoPrSha = sha;
+  let ramoPrPresente = true;
   const gh = (args) => {
     comandi.push(args);
     if (erroreRipiego && args[0] === 'pr' && args[1] === 'merge') throw new Error('Ripiego rifiutato');
@@ -39,21 +44,35 @@ function scenario({ commenti = [], autore = 'doubledrag33', label = false, files
         state: 'open',
         draft: false,
         labels: label ? [{ name: label === true ? 'non-unire' : label }] : [],
-        head: { sha, ref: headRef, repo: { full_name: 'org/progetto' } },
-        base: { ref: 'main', repo: { full_name: 'org/progetto' }, sha: prLette++ === 0 ? baseSha : baseShaFinal },
+        head: { sha, ref: headRef, repo: { full_name: headRepo } },
+        base: { ref: 'main', repo: { full_name: 'org/progetto', node_id: repositoryId }, sha: prLette++ === 0 ? baseSha : baseShaFinal },
       });
     }
-    if (endpoint === 'repos/org/progetto/git/refs' && args.includes('POST')) return risposta(createStatus, { ref: `refs/heads/${temporaneo}` });
+    if (endpoint === 'repos/org/progetto/git/refs' && args.includes('POST')) return corpoCreazione === undefined ? risposta(createStatus, { ref: `refs/heads/${temporaneo}` }) : `HTTP/2.0 ${createStatus}\r\n\r\n${corpoCreazione}`;
     if (endpoint === 'repos/org/progetto/merges' && args.includes('POST')) {
       if (erroreMerge) throw new Error('Rete non disponibile');
       return risposta(mergeStatus, mergeStatus === 204 ? undefined : { sha: commitUnione, parents: parents.map(sha => ({ sha })) });
     }
-    if (endpoint === refMain && args.includes('PATCH')) return risposta(patchStatus, patchStatus === 200 ? { object: { sha: commitUnione } } : { message: patchProtezione ? 'Protected branch update failed. Changes must be made through a pull request.' : 'Update is not a fast forward' });
+    if (endpoint === refMain && args.includes('PATCH')) {
+      if (pushDopoApprovazione) ramoPrSha = 'b'.repeat(40);
+      if (corpoPatch !== undefined) return `HTTP/2.0 ${patchStatus}\r\n\r\n${corpoPatch}`;
+      return risposta(patchStatus, patchStatus === 200 ? { object: { sha: commitUnione } } : { message: patchProtezione ? 'Protected branch update failed. Changes must be made through a pull request.' : 'Update is not a fast forward' });
+    }
     if (endpoint === refTemporaneo && args.includes('DELETE')) {
       if (errorePulizia) throw new Error('Pulizia fallita');
       return risposta(204);
     }
-    if (endpoint === 'repos/org/progetto/git/refs/heads/feat/pagina' && args.includes('DELETE')) return risposta(204);
+    if (endpoint === 'repos/org/progetto/git/refs/heads/feat/pagina' && args.includes('DELETE')) {
+      ramoPrPresente = false;
+      return risposta(204);
+    }
+    if (endpoint === 'graphql') {
+      if (erroreUpdateRefs) throw new Error('updateRefs non disponibile');
+      if (rispostaUpdateRefs !== undefined) return JSON.stringify(rispostaUpdateRefs);
+      if (campi(args).beforeOid !== ramoPrSha) return JSON.stringify({ data: { updateRefs: null }, errors: [{ message: 'Reference does not match beforeOid' }] });
+      ramoPrPresente = false;
+      return JSON.stringify({ data: { updateRefs: { clientMutationId: null } } });
+    }
     if (endpoint === 'repos/org/progetto/git/ref/heads/main') return JSON.stringify({ object: { sha: baseRiletta } });
     if (endpoint === 'repos/org/progetto/branches/main/protection') {
       if (erroreProtezione) { const e = new Error(`HTTP ${erroreProtezione}`); e.status = erroreProtezione; throw e; }
@@ -71,11 +90,15 @@ function scenario({ commenti = [], autore = 'doubledrag33', label = false, files
       ...jobs,
     ] }]);
     if (endpoint?.endsWith('/comments')) return JSON.stringify([commenti.map(body => ({ user: { login: autore }, body }))]);
-    if (endpoint === 'repos/org/progetto/actions/workflows/demo.yml') return JSON.stringify({ state: 'active' });
+    if (endpoint === 'repos/org/progetto/actions/workflows/demo.yml') {
+      if (senzaDemo) throw http404();
+      return JSON.stringify({ state: 'active' });
+    }
+    if (erroreDispatch && args[0] === 'workflow') throw new Error('Dispatch fallito');
     if (args[0] !== 'api') return '';
     throw new Error(`API inattesa: ${args.join(' ')}`);
   };
-  return { comandi, gh };
+  return { comandi, gh, get ramoPrPresente() { return ramoPrPresente; } };
 }
 
 const base = {
@@ -113,7 +136,7 @@ test('commento revisore OK sullo SHA corrente unisce', () => {
   const aggiorna = s.comandi.find(c => c[1] === refMain && c.includes('PATCH'));
   assert.deepEqual(campi(aggiorna), { sha: commitUnione, force: false });
   const pulizia = s.comandi.findIndex(c => c[1] === refTemporaneo && c.includes('DELETE'));
-  const cancellaPr = s.comandi.findIndex(c => c[1] === 'repos/org/progetto/git/refs/heads/feat/pagina' && c.includes('DELETE'));
+  const cancellaPr = s.comandi.findIndex(c => c[1] === 'graphql' && campi(c).query.includes('updateRefs'));
   const demo = s.comandi.findIndex(c => c.join(' ') === 'workflow run demo.yml --repo org/progetto --ref main');
   assert.ok(s.comandi.indexOf(creazione) < s.comandi.indexOf(unione));
   assert.ok(s.comandi.indexOf(unione) < s.comandi.indexOf(aggiorna));
@@ -305,9 +328,9 @@ test('FX3: collisione sul temporaneo non cancella un ramo altrui', () => {
   assert.equal(s.comandi.some(c => c.includes('DELETE') || c[1] === refMain || c[1] === 'repos/org/progetto/merges'), false);
 });
 
-test('FX3: errore nella pulizia non viene nascosto', () => {
+test('FX3: errore nella pulizia non viene nascosto', t => {
   const s = scenario({ commenti: [commento('OK')], errorePulizia: true });
-  assert.throws(() => eseguiMerge(base, s.gh), /Pulizia fallita/);
+  unitaConAvviso(s, t, /ramo temporaneo lasciato:.*pulizia/);
 });
 
 test('FX3: ripiego rifiutato pulisce il temporaneo senza cancellare la testa o avviare demo', () => {
@@ -335,3 +358,219 @@ test('FX3: titolo remoto passato letteralmente nel messaggio via raw-field', () 
   assert.ok(['-f', '--raw-field'].includes(richiesta[indice - 1]));
   assert.equal(campi(richiesta).commit_message, `Merge PR #7: ${titolo} (revisore OK su aaaaaaaa, base cccccccc)`);
 });
+
+function demoLanciata(s) {
+  assert.equal(s.comandi.filter(c => c.join(' ') === 'workflow run demo.yml --repo org/progetto --ref main').length, 1);
+}
+
+function nessunDeletePr(s) {
+  assert.equal(s.comandi.some(c => c[0] === 'api' && c.includes('DELETE') && c[1] !== refTemporaneo), false);
+}
+
+test('FX4: ramo di fork non viene toccato', () => {
+  const s = scenario({ commenti: [commento('OK')], headRepo: 'altro/fork' });
+  assert.equal(eseguiMerge(base, s.gh).unita, false);
+  assert.equal(s.ramoPrPresente, true);
+  assert.equal(s.comandi.some(c => c[1] === 'graphql' || c.includes('DELETE') || c.includes('PATCH') || c.includes('POST')), false);
+});
+
+for (const erroreDispatch of [false, true]) {
+  test(`FX4: job-ci invariato con errore dispatch ${erroreDispatch}`, () => {
+    const s = scenario({ jobs: [{ id: 123, name: 'Revisione AI', status: 'completed', conclusion: 'success' }], erroreDispatch });
+    const gh = args => args[1]?.endsWith('/logs') ? `FUXX_REVISIONE={"verdetto":"OK","sha":"${sha}"}` : s.gh(args);
+    if (erroreDispatch) assert.throws(() => eseguiMerge({ ...base, modo: 'job-ci' }, gh), /Dispatch fallito/);
+    else assert.deepEqual(eseguiMerge({ ...base, modo: 'job-ci' }, gh), { unita: true, demo: true });
+    assert.deepEqual(s.comandi.filter(c => c[0] === 'pr' && c[1] === 'merge'), [
+      ['pr', 'merge', '7', '--repo', 'org/progetto', '--squash', '--delete-branch', '--match-head-commit', sha],
+    ]);
+    assert.equal(s.comandi.some(c => c[1] === 'graphql' || c.includes('DELETE') || c.includes('PATCH') || c.includes('POST')), false);
+  });
+}
+
+test('FX4: demo assente non viene lanciata neppure dopo un avviso di pulizia', t => {
+  const s = scenario({ commenti: [commento('OK')], senzaDemo: true, errorePulizia: true });
+  t.mock.method(console, 'warn', () => {});
+  const risultato = eseguiMerge(base, s.gh);
+  assert.equal(risultato.unita, true);
+  assert.equal(risultato.demo, false);
+  assert.equal(risultato.demoFallita, undefined);
+  assert.match(risultato.avvisi.join('\n'), /ramo temporaneo lasciato:/);
+  assert.equal(s.comandi.some(c => c[0] === 'workflow'), false);
+});
+
+test('FX4: ramo PR cancellato solo con updateRefs e confronto atomico dello SHA approvato', () => {
+  const s = scenario({ commenti: [commento('OK')] });
+  assert.equal(eseguiMerge(base, s.gh).unita, true);
+  nessunDeletePr(s);
+  const richieste = s.comandi.filter(c => c[1] === 'graphql');
+  assert.equal(richieste.length, 1);
+  const { query, ...variabili } = campi(richieste[0]);
+  assert.match(query, /mutation\b/);
+  assert.match(query, /updateRefs\(input:\s*\{\s*repositoryId:\s*\$repositoryId,\s*refUpdates:\s*\[\{\s*name:\s*\$name,\s*beforeOid:\s*\$beforeOid,\s*afterOid:\s*\$afterOid,\s*force:\s*\$force\s*\}\]\s*\}\)/);
+  assert.deepEqual(variabili, { repositoryId: 'R_progetto', name: 'refs/heads/feat/pagina', beforeOid: sha, afterOid: '0'.repeat(40), force: false });
+  assert.equal(s.ramoPrPresente, false);
+  demoLanciata(s);
+});
+
+test('FX4: push sulla PR dopo l approvazione conserva il ramo e lancia demo dopo il merge', () => {
+  const s = scenario({ commenti: [commento('OK')], pushDopoApprovazione: true });
+  const risultato = eseguiMerge(base, s.gh);
+  assert.equal(risultato.unita, true);
+  assert.equal(s.ramoPrPresente, true);
+  assert.match(risultato.avvisi.join('\n'), /ramo lasciato:.*updateRefs/);
+  nessunDeletePr(s);
+  demoLanciata(s);
+});
+
+test('FX4: updateRefs non disponibile lascia il ramo e lancia demo', () => {
+  const s = scenario({ commenti: [commento('OK')], erroreUpdateRefs: true });
+  const risultato = eseguiMerge(base, s.gh);
+  assert.equal(risultato.unita, true);
+  assert.equal(s.ramoPrPresente, true);
+  assert.match(risultato.avvisi.join('\n'), /ramo lasciato:.*updateRefs/);
+  nessunDeletePr(s);
+  demoLanciata(s);
+});
+
+test('FX4: errori GraphQL nel corpo HTTP 200 sono segnalati senza ripiego DELETE', () => {
+  const s = scenario({ commenti: [commento('OK')], rispostaUpdateRefs: { data: { updateRefs: null }, errors: [{ message: 'Field updateRefs does not exist' }] } });
+  const risultato = eseguiMerge(base, s.gh);
+  assert.equal(risultato.unita, true);
+  assert.equal(s.ramoPrPresente, true);
+  assert.match(risultato.avvisi.join('\n'), /ramo lasciato:.*updateRefs/);
+  nessunDeletePr(s);
+  demoLanciata(s);
+});
+
+test('FX4: repository senza node_id lascia il ramo con motivo e lancia demo', () => {
+  const s = scenario({ commenti: [commento('OK')], repositoryId: null });
+  const risultato = eseguiMerge(base, s.gh);
+  assert.equal(risultato.unita, true);
+  assert.equal(s.ramoPrPresente, true);
+  assert.match(risultato.avvisi.join('\n'), /ramo lasciato:.*identificativo/);
+  assert.equal(s.comandi.some(c => c[1] === 'graphql'), false);
+  nessunDeletePr(s);
+  demoLanciata(s);
+});
+
+function unitaConAvviso(s, t, motivo) {
+  const log = [];
+  t.mock.method(console, 'warn', messaggio => log.push(messaggio));
+  const risultato = eseguiMerge(base, s.gh);
+  assert.equal(risultato.unita, true);
+  assert.match(risultato.avvisi.join('\n'), motivo);
+  assert.match(log.join('\n'), motivo);
+  demoLanciata(s);
+  return risultato;
+}
+
+test('FX4: pulizia temporaneo fallita dopo il PATCH non impedisce pulizia PR e demo', t => {
+  const s = scenario({ commenti: [commento('OK')], errorePulizia: true });
+  const risultato = unitaConAvviso(s, t, /ramo temporaneo lasciato:.*pulizia/);
+  assert.equal(risultato.demo, true);
+  assert.equal(s.ramoPrPresente, false);
+  assert.equal(s.comandi.filter(c => c[1] === 'graphql').length, 1);
+});
+
+test('FX4: fallimenti di entrambe le pulizie producono due avvisi e non saltano demo', t => {
+  const s = scenario({ commenti: [commento('OK')], errorePulizia: true, erroreUpdateRefs: true });
+  const risultato = unitaConAvviso(s, t, /ramo temporaneo lasciato:/);
+  assert.equal(risultato.avvisi.length, 2);
+  assert.match(risultato.avvisi[1], /ramo lasciato:.*updateRefs/);
+  assert.equal(s.ramoPrPresente, true);
+  nessunDeletePr(s);
+});
+
+test('FX4: dispatch demo fallito conserva il merge e avvisa di rilanciarlo manualmente', t => {
+  const s = scenario({ commenti: [commento('OK')], erroreDispatch: true });
+  const risultato = unitaConAvviso(s, t, /demo non avviata:.*dispatch.*manual/);
+  assert.equal(risultato.demo, false);
+  assert.equal(risultato.demoFallita, true);
+});
+
+test('FX4: anche dopo ripiego riuscito la pulizia fallita lascia il merge riuscito e lancia demo', t => {
+  const s = scenario({ commenti: [commento('OK')], patchStatus: 422, patchProtezione: true, protezione: { required_status_checks: { strict: true } }, errorePulizia: true });
+  unitaConAvviso(s, t, /ramo temporaneo lasciato:/);
+  assert.equal(s.ramoPrPresente, false);
+});
+
+test('FX4: errore di pulizia non sostituisce l errore originale prima del merge', t => {
+  const s = scenario({ commenti: [commento('OK')], erroreMerge: true, errorePulizia: true });
+  const log = [];
+  t.mock.method(console, 'warn', messaggio => log.push(messaggio));
+  assert.throws(() => eseguiMerge(base, s.gh), /Rete non disponibile/);
+  assert.match(log.join('\n'), /ramo temporaneo lasciato:/);
+  assert.equal(s.ramoPrPresente, true);
+  assert.equal(s.comandi.some(c => c[1] === 'graphql' || c[0] === 'workflow'), false);
+});
+
+test('FX4: errore di pulizia non sostituisce il motivo di sospensione prima del merge', t => {
+  const s = scenario({ commenti: [commento('OK')], patchStatus: 422, errorePulizia: true });
+  const log = [];
+  t.mock.method(console, 'warn', messaggio => log.push(messaggio));
+  const risultato = eseguiMerge(base, s.gh);
+  assert.equal(risultato.unita, false);
+  assert.match(risultato.motivo, /main avanzato/);
+  assert.match(log.join('\n'), /ramo temporaneo lasciato:/);
+  assert.equal(s.ramoPrPresente, true);
+  assert.equal(s.comandi.some(c => c[1] === 'graphql' || c[0] === 'workflow'), false);
+});
+
+for (const campo of ['corpoCreazione', 'corpoPatch']) {
+  test(`FX4: ${campo} non JSON con stato HTTP riuscito non perde pulizia o demo`, () => {
+    const s = scenario({ commenti: [commento('OK')], [campo]: '{troncato' });
+    assert.equal(eseguiMerge(base, s.gh).unita, true);
+    assert.equal(s.comandi.filter(c => c[1] === refTemporaneo && c.includes('DELETE')).length, 1);
+    demoLanciata(s);
+  });
+}
+
+for (const riepilogoNonScrivibile of [false, true]) {
+  test(riepilogoNonScrivibile ? 'FX4: errore scrittura riepilogo dopo il merge è solo avviso' : 'FX4: CLI esce 0 con merge eseguito e avvisi anche se pulizia e dispatch falliscono', () => {
+    const directory = mkdtempSync(fileURLToPath(new URL('./.fx4-', import.meta.url)));
+    try {
+      const evento = `${directory}/evento.json`;
+      const summary = `${directory}/${riepilogoNonScrivibile ? 'directory-assente/' : ''}summary.txt`;
+      const stub = `${directory}/gh.mjs`;
+      writeFileSync(evento, JSON.stringify({ workflow_run: { id: 90, event: 'pull_request', conclusion: 'success', head_sha: sha, pull_requests: [{ number: 7 }] } }));
+      // Isola solo il confine gh: viene eseguito il vero ingresso CLI, compreso lo step summary.
+      writeFileSync(stub, `import childProcess from 'node:child_process';
+        import { syncBuiltinESMExports } from 'node:module';
+        const sha = ${JSON.stringify(sha)};
+        const baseApprovata = ${JSON.stringify(baseApprovata)};
+        const commitUnione = ${JSON.stringify(commitUnione)};
+        const temporaneo = ${JSON.stringify(temporaneo)};
+        const refTemporaneo = ${JSON.stringify(refTemporaneo)};
+        const refMain = ${JSON.stringify(refMain)};
+        ${campi.toString()}
+        ${risposta.toString()}
+        ${http404.toString()}
+        ${scenario.toString()}
+        const s = scenario({ commenti: [${JSON.stringify(commento('OK'))}], errorePulizia: true, erroreDispatch: true });
+        childProcess.execFileSync = (comando, args) => {
+          if (comando !== 'gh') throw new Error('Comando inatteso');
+          return s.gh(args);
+        };
+        syncBuiltinESMExports();`);
+      const processo = spawnSync(process.execPath, ['--import', pathToFileURL(stub).href, fileURLToPath(new URL('../merge.mjs', import.meta.url))], {
+        encoding: 'utf8', timeout: 10000,
+        env: { ...process.env, GITHUB_EVENT_PATH: evento, GITHUB_STEP_SUMMARY: summary, GITHUB_REPOSITORY: base.repository, CONTROLLI_OBBLIGATORI: JSON.stringify(base.controlli), NOME_REVISIONE: base.revisione, MODO_REVISIONE: base.modo },
+      });
+      assert.ifError(processo.error);
+      assert.equal(processo.status, 0, processo.stderr);
+      assert.match(processo.stdout, /Merge eseguito; demo: non avviata/);
+      assert.match(processo.stderr, /Avviso: ramo temporaneo lasciato:/);
+      assert.match(processo.stderr, /Avviso: demo non avviata:/);
+      if (riepilogoNonScrivibile) {
+        assert.match(processo.stderr, /Avviso: riepilogo non scritto/);
+      } else {
+        const riepilogo = readFileSync(summary, 'utf8');
+        assert.match(riepilogo, /Merge eseguito; demo: non avviata/);
+        assert.match(riepilogo, /ramo temporaneo lasciato:/);
+        assert.match(riepilogo, /demo non avviata:/);
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+}
