@@ -4,6 +4,11 @@ import { pathToFileURL } from 'node:url';
 
 // Estensioni SQL da leggere per intero e da trattare come SQL.
 export const SQL = /\.(sql|psql|pgsql|ddl)$/i;
+export const PERCORSI_A_RISCHIO = [
+  'src/lib/sicurezza/**', 'src/proxy.ts', 'middleware.*', 'proxy.*',
+  'src/lib/permessi/**', 'tests/permessi/**', 'scripts/controlli/permessi.mjs',
+  '.fuxx/mattoni.json', '.fuxx/creazione.json',
+];
 
 // Percorso normalizzato per i controlli: separatori /, niente . e //, risoluzione di .., minuscole.
 export function normalizzaPercorso(nome) {
@@ -14,7 +19,14 @@ export function normalizzaPercorso(nome) {
 }
 
 function percorsoARischio(nome) {
-  const pezzi = normalizzaPercorso(nome).split('/');
+  const normalizzato = normalizzaPercorso(nome);
+  if (PERCORSI_A_RISCHIO.some(modello => {
+    const m = modello.toLowerCase();
+    if (m.endsWith('/**')) return normalizzato.startsWith(m.slice(0, -2));
+    if (m.endsWith('.*') && !m.includes('/')) return !normalizzato.includes('/') && normalizzato.startsWith(`${m.slice(0, -2)}.`);
+    return normalizzato === m;
+  })) return true;
+  const pezzi = normalizzato.split('/');
   const base = pezzi.at(-1);
   const cartelle = pezzi.slice(0, -1);
   return cartelle.some(c => ['db', 'auth', '.github', '.fuxx', '__fuxx_ci'].includes(c) || c.includes('migration'))
