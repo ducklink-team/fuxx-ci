@@ -18,6 +18,18 @@ export function licenzaConsentita(espressione) {
 }
 export function analizzaLicenze(pacchetti) { return pacchetti.filter(p => !licenzaConsentita(p.licenza)); }
 
+// Nomi e licenze sono dati di terzi: finiscono solo dentro un blocco di codice recintato, dove
+// link, immagini e HTML non vengono interpretati. Il backtick è rimosso, così il recinto non si chiude
+// dall'interno; controlli di riga e lunghezza sono limitati.
+export function testoSicuro(valore, massimo = 200) {
+  return String(valore).replace(/[\u0000-\u001f\u007f\u0085\u2028\u2029`]/g, ' ').slice(0, massimo);
+}
+export function riepilogo(totale, avvisi, massimoRighe = 200) {
+  const righe = avvisi.slice(0, massimoRighe).map(p => `${testoSicuro(p.nome)}: ${testoSicuro(p.licenza)}`);
+  const altri = avvisi.length - righe.length;
+  return `## Licenze dipendenze\n${totale} pacchetti; ${avvisi.length} licenze da verificare (solo avviso).\n${righe.length ? `\`\`\`text\n${righe.join('\n')}${altri > 0 ? `\n... altri ${altri}` : ''}\n\`\`\`\n` : ''}`;
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     const dati = JSON.parse(readFileSync(process.argv[2], 'utf8'));
@@ -25,8 +37,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       ? dati.map(p => ({ nome: `${p.Name}@${p.Version}`, licenza: p.LicenseExpression || p.License || 'UNKNOWN' }))
       : Object.entries(dati).map(([nome, p]) => ({ nome, licenza: Array.isArray(p.licenses) ? p.licenses.join(' OR ') : p.licenses ?? 'UNKNOWN' }));
     const avvisi = analizzaLicenze(pacchetti);
-    // Dati di terzi: non interpolare nomi/licenze in comandi di workflow.
-    const testo = `## Licenze dipendenze\n${pacchetti.length} pacchetti; ${avvisi.length} licenze da verificare (solo avviso).\n${avvisi.map(p => `- ${String(p.nome).replace(/[\r\n<>]/g, ' ')}: ${String(p.licenza).replace(/[\r\n<>]/g, ' ')}`).join('\n')}\n`;
+    const testo = riepilogo(pacchetti.length, avvisi);
     if (avvisi.length) console.log('::warning::Licenze fuori lista o sconosciute: consultare il riepilogo.');
     if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, testo);
   } catch { console.error('Report licenze illeggibile: controllo non eseguito'); process.exitCode = 1; }

@@ -2,13 +2,33 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, appendFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
+// Estensioni SQL da leggere per intero e da trattare come SQL.
+export const SQL = /\.(sql|psql|pgsql|ddl)$/i;
+
+// Percorso normalizzato per i controlli: separatori /, niente . e //, risoluzione di .., minuscole.
+export function normalizzaPercorso(nome) {
+  const pezzi = String(nome ?? '').replace(/\\/g, '/').split('/').filter(p => p !== '' && p !== '.');
+  const risolti = [];
+  for (const p of pezzi) { if (p === '..') risolti.pop(); else risolti.push(p); }
+  return risolti.join('/').toLowerCase();
+}
+
+function percorsoARischio(nome) {
+  const pezzi = normalizzaPercorso(nome).split('/');
+  const base = pezzi.at(-1);
+  const cartelle = pezzi.slice(0, -1);
+  return cartelle.some(c => ['db', 'auth', '.github', '.fuxx', '__fuxx_ci'].includes(c) || c.includes('migration'))
+    || (cartelle.includes('specs') && /^(contratto-api|spec)\.md$/.test(base))
+    || /^middleware\.[^/]+$/.test(base)
+    || /^codeowners/.test(base)
+    || /^\.env/.test(base)
+    || /^\.?(gitleaks|semgrep)/.test(base);
+}
+
 export function fileARischio(file) {
-  const percorso = nome => /^(specs\/(?:.*\/)?(?:contratto-api|spec)\.md|db\/|\.github\/|\.fuxx\/)/i.test(nome)
-    || /(^|\/)(migrations|auth)\//i.test(nome)
-    || /(^|\/)(middleware\.[^/]+|CODEOWNERS|\.env\.example)$/i.test(nome);
-  return [file.filename, file.previous_filename].filter(Boolean).some(percorso)
-    || /\.sql$/i.test(file.previous_filename ?? '')
-    || (/\.sql$/i.test(file.filename) && (typeof (file.contenuto ?? file.patch) !== 'string' || /\bpolicy\b/i.test(file.contenuto ?? file.patch)));
+  return [file.filename, file.previous_filename].filter(Boolean).some(percorsoARischio)
+    || SQL.test(file.previous_filename ?? '')
+    || (SQL.test(file.filename) && (typeof (file.contenuto ?? file.patch) !== 'string' || /\bpolicy\b/i.test(file.contenuto ?? file.patch)));
 }
 
 export function leggiRevisione(log, sha) {
@@ -25,12 +45,16 @@ export function leggiRevisione(log, sha) {
 export function leggiCommentoRevisore(commenti, sha) {
   const candidati = commenti.filter(commento => commento?.user?.login === 'doubledrag33'
     && typeof commento.body === 'string'
-    && commento.body.split(/\r?\n/).some(riga => /^ESITO:\s*/.test(riga)));
+    && commento.body.split(/\r?\n/).some(riga => /^ESITO:/.test(riga)));
   const ultimo = candidati.at(-1);
   if (!ultimo) return 'SCONOSCIUTA';
+  // Il revisore scrive ESITO sulla prima riga e poi la prima riga SHA, costruita dal codice; dopo vengono
+  // il riassunto del modello e i nomi dei file della PR, che possono contenere righe ESITO o SHA finte.
+  // Quindi si legge il verdetto dalla prima riga e lo SHA dalla prima riga SHA, mai "una qualunque".
   const righe = ultimo.body.split(/\r?\n/);
-  const esito = righe.find(riga => /^ESITO:\s*/.test(riga))?.match(/^ESITO:\s*(OK|BLOCCA)\s*$/)?.[1];
-  const commentoSha = righe.find(riga => /^SHA:\s*/.test(riga))?.match(/^SHA:\s*(\S+)\s*$/)?.[1];
+  if (!/^ESITO:/.test(righe[0])) return 'SCONOSCIUTA';
+  const esito = righe[0].match(/^ESITO:\s*(OK|BLOCCA)\s*$/)?.[1];
+  const commentoSha = righe.find(riga => /^SHA:/.test(riga))?.match(/^SHA:\s*(\S+)\s*$/)?.[1];
   return esito === 'OK' && commentoSha === sha ? 'OK' : (esito === 'BLOCCA' ? 'BLOCCA' : 'SCONOSCIUTA');
 }
 
@@ -57,7 +81,7 @@ export function eseguiMerge(dati, gh = ghReale) {
   if (!ammessa(pr)) return ferma('PR non ammessa, SHA cambiato, bozza, fork o etichetta di arresto');
   const files = pagine(`pulls/${numero}/files`).flat();
   if (!files.length || files.length >= 3000) return ferma('Elenco file assente o potenzialmente troncato');
-  for (const file of files.filter(f => /\.sql$/i.test(f.filename) && f.status !== 'removed')) {
+  for (const file of files.filter(f => SQL.test(f.filename) && f.status !== 'removed')) {
     const percorso = file.filename.split('/').map(encodeURIComponent).join('/');
     const contenuto = api(`contents/${percorso}?ref=${sha}`);
     if (contenuto.encoding !== 'base64' || typeof contenuto.content !== 'string') return ferma('Contenuto SQL non verificabile');
@@ -70,7 +94,18 @@ export function eseguiMerge(dati, gh = ghReale) {
     gh(['pr', 'comment', String(numero), '--repo', repository, '--body', `serve l'OK del responsabile: ${rischiosi.map(f => f.filename).join(', ')}`]);
     return ferma('File a rischio: serve OK del responsabile');
   }
-  const jobs = pagine(`actions/runs/${runId}/jobs`).flatMap(p => p.jobs);
+  if (modo === 'commento-revisore') {
+    // Il nome dei job non prova nulla: un workflow qualunque con lo stesso nome li produrrebbe.
+    // Il run deve venire da una pull_request con lo SHA corrente e il file del workflow deve essere
+    // identico a quello su main (un workflow nuovo della PR non esiste su main e viene fermato).
+    const run = api(`actions/runs/${runId}`);
+    if (run.event !== 'pull_request' || run.head_sha !== sha || typeof run.path !== 'string') return ferma('Run dei controlli non riferito a una pull_request con lo SHA corrente');
+    const percorso = run.path.split('@')[0].split('/').map(encodeURIComponent).join('/');
+    const blob = ref => { try { return api(`contents/${percorso}?ref=${ref}`).sha; } catch (e) { if (e.status === 404) return null; throw e; } };
+    const suMain = blob('main');
+    if (!suMain || suMain !== blob(sha)) return ferma('Workflow dei controlli assente da main o diverso dallo SHA della PR');
+  }
+  const jobs = pagine(`actions/runs/${runId}/jobs`).flatMap(p => p.jobs).filter(j => modo === 'job-ci' || j.head_sha === sha);
   for (const nome of [...controlli, ...(modo === 'job-ci' ? [revisione] : [])]) {
     const trovati = jobs.filter(j => j.name === nome);
     if (trovati.length !== 1 || trovati[0].status !== 'completed' || trovati[0].conclusion !== 'success') return ferma(`Controllo non verde: ${nome}`);

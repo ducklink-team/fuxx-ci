@@ -5,9 +5,16 @@ import { fileARischio, leggiRevisione, eseguiMerge } from '../merge.mjs';
 for (const nome of ['specs/uno/contratto-api.md', 'specs/uno/spec.md', 'supabase/migrations/a.sql', 'src/migrations/a.js', 'migrations/a.py', 'db/schema.json', 'src/auth/login.ts', 'auth/login.ts', 'middleware.ts', 'src/middleware.js', '.github/workflows/ci.yml', '.env.example', '.fuxx/ruoli.json', 'CODEOWNERS', '.github/CODEOWNERS']) {
   test(`file a rischio: ${nome}`, () => assert.equal(fileARischio({ filename: nome }), true));
 }
-for (const nome of ['src/page.tsx', 'README.md', 'src/author.ts', 'specs/uno/tasks.md']) {
+for (const nome of ['src/page.tsx', 'README.md', 'src/author.ts', 'specs/uno/tasks.md', 'src/environment.ts', 'src/db.ts']) {
   test(`file ordinario: ${nome}`, () => assert.equal(fileARischio({ filename: nome }), false));
 }
+// Percorsi non normalizzati, sottocartelle e varianti di file sensibili (rilievo 0005).
+for (const nome of ['apps/api/db/x.ts', './db/x.ts', 'DB/x.ts', 'src\\db\\x.ts', 'src//auth//login.ts', 'a/../db/x.ts', 'supabase/db-migrations/a.js', 'apps/x/specs/a/spec.md', 'pkg/.fuxx/r.json', '.env', '.env.local', 'docs/codeowners', 'src/__fuxx_ci/x.js', '.semgrepignore', '.gitleaksignore', 'config/.gitleaks.toml', '.semgrep.yml']) {
+  test(`file a rischio (normalizzato o variante): ${nome}`, () => assert.equal(fileARischio({ filename: nome }), true));
+}
+test('SQL psql con policy è a rischio', () => assert.equal(fileARischio({ filename: 'schema.psql', patch: '+CREATE POLICY utenti ON utenti;' }), true));
+test('SQL pgsql senza policy non è a rischio', () => assert.equal(fileARischio({ filename: 'schema.pgsql', patch: '+CREATE TABLE utenti(id int);' }), false));
+test('DDL senza patch si ferma per prudenza', () => assert.equal(fileARischio({ filename: 'schema.ddl' }), true));
 test('SQL con policy anche maiuscola è a rischio', () => assert.equal(fileARischio({ filename: 'schema.sql', patch: '+CREATE POLICY utenti ON utenti;' }), true));
 test('SQL senza policy non è a rischio', () => assert.equal(fileARischio({ filename: 'schema.sql', patch: '+CREATE TABLE utenti(id int);' }), false));
 test('SQL senza patch si ferma per prudenza', () => assert.equal(fileARischio({ filename: 'schema.sql' }), true));
@@ -93,4 +100,9 @@ test('input repository non valido non raggiunge gh', () => {
   const s = scenario();
   assert.throws(() => eseguiMerge({ ...base, repository: '--altro' }, s.gh), /non validi/);
   assert.equal(s.comandi.length, 0);
+});
+test('policy in un .psql fuori dal diff è letta nel contenuto completo e sospende il merge', () => {
+  const s = scenario({ files: [{ filename: 'schema.psql', patch: '+-- commento', status: 'modified' }], sql: 'CREATE POLICY accesso ON utenti;\n-- commento' });
+  assert.equal(eseguiMerge(base, s.gh).unita, false);
+  assert.ok(s.comandi.some(c => c[1] === `repos/org/progetto/contents/schema.psql?ref=${sha}`));
 });
