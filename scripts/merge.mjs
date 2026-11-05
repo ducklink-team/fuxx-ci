@@ -54,7 +54,7 @@ export function leggiRevisione(log, sha) {
   } catch { return 'SCONOSCIUTA'; }
 }
 
-export function leggiCommentoRevisore(commenti, sha) {
+export function leggiCommentoRevisore(commenti, sha, base) {
   const candidati = commenti.filter(commento => commento?.user?.login === 'doubledrag33'
     && typeof commento.body === 'string'
     && commento.body.split(/\r?\n/).some(riga => /^ESITO:/.test(riga)));
@@ -67,7 +67,8 @@ export function leggiCommentoRevisore(commenti, sha) {
   if (!/^ESITO:/.test(righe[0])) return 'SCONOSCIUTA';
   const esito = righe[0].match(/^ESITO:\s*(OK|BLOCCA)\s*$/)?.[1];
   const commentoSha = righe.find(riga => /^SHA:/.test(riga))?.match(/^SHA:\s*(\S+)\s*$/)?.[1];
-  return esito === 'OK' && commentoSha === sha ? 'OK' : (esito === 'BLOCCA' ? 'BLOCCA' : 'SCONOSCIUTA');
+  const commentoBase = righe.find(riga => /^Base:/.test(riga))?.match(/^Base:\s*(\S+)\s*$/)?.[1];
+  return esito === 'OK' && commentoSha === sha && commentoBase === base ? 'OK' : (esito === 'BLOCCA' ? 'BLOCCA' : 'SCONOSCIUTA');
 }
 
 function ghReale(args) {
@@ -100,12 +101,13 @@ export function eseguiMerge(dati, gh = ghReale) {
     file.contenuto = Buffer.from(contenuto.content, 'base64').toString('utf8');
   }
   const rischiosi = files.filter(fileARischio);
-  if (rischiosi.length) {
+  if (rischiosi.length && modo === 'job-ci') {
     gh(['label', 'create', 'serve-ok', '--repo', repository, '--color', 'D93F0B', '--description', 'Richiede OK del responsabile', '--force']);
     gh(['pr', 'edit', String(numero), '--repo', repository, '--add-label', 'serve-ok']);
     gh(['pr', 'comment', String(numero), '--repo', repository, '--body', `serve l'OK del responsabile: ${rischiosi.map(f => f.filename).join(', ')}`]);
     return ferma('File a rischio: serve OK del responsabile');
   }
+  let commenti;
   if (modo === 'commento-revisore') {
     // Il nome dei job non prova nulla: un workflow qualunque con lo stesso nome li produrrebbe.
     // Il run deve venire da una pull_request con lo SHA corrente e il file del workflow deve essere
@@ -123,16 +125,17 @@ export function eseguiMerge(dati, gh = ghReale) {
     if (trovati.length !== 1 || trovati[0].status !== 'completed' || trovati[0].conclusion !== 'success') return ferma(`Controllo non verde: ${nome}`);
   }
   if (modo === 'commento-revisore') {
-    const commenti = pagine(`issues/${numero}/comments`).flat();
-    if (leggiCommentoRevisore(commenti, sha) !== 'OK') return ferma('Revisione commento mancante, BLOCCA o non riferita allo SHA corrente');
+    commenti = pagine(`issues/${numero}/comments`).flat();
   } else {
     const job = jobs.find(j => j.name === revisione);
     if (leggiRevisione(gh(['api', `repos/${repository}/actions/jobs/${job.id}/logs`]), sha) !== 'OK') return ferma('Revisione BLOCK, mancante o non riferita allo SHA corrente');
   }
-  if (!ammessa(api(`pulls/${numero}`))) return ferma('PR cambiata durante i controlli');
   // Leggere prima del merge: un 403 non è equivalente a "demo assente".
   let demo = true;
   try { api('actions/workflows/demo.yml'); } catch (e) { if (e.status === 404) demo = false; else throw e; }
+  const prFinale = api(`pulls/${numero}`);
+  if (!ammessa(prFinale)) return ferma('PR cambiata durante i controlli');
+  if (modo === 'commento-revisore' && leggiCommentoRevisore(commenti, sha, prFinale.base?.sha) !== 'OK') return ferma('Revisione commento mancante, BLOCCA o non riferita allo SHA corrente o alla base corrente');
   gh(['pr', 'merge', String(numero), '--repo', repository, '--squash', '--delete-branch', '--match-head-commit', sha]);
   // GITHUB_TOKEN non innesca push: workflow_dispatch è un'eccezione documentata.
   if (demo) gh(['workflow', 'run', 'demo.yml', '--repo', repository, '--ref', 'main']);

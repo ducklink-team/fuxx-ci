@@ -6,8 +6,9 @@ const sha = 'a'.repeat(40);
 
 function http404() { const e = new Error('HTTP 404: Not Found'); e.status = 404; return e; }
 
-function scenario({ commenti = [], autore = 'doubledrag33', label = false, files = [{ filename: 'src/page.tsx' }], jobs = [], evento = 'pull_request', percorso = '.github/workflows/ci.yml', senzaWorkflowSuMain = false, blobPr = 'blob-main', shaJobs = sha } = {}) {
+function scenario({ commenti = [], autore = 'doubledrag33', label = false, files = [{ filename: 'src/page.tsx' }], jobs = [], evento = 'pull_request', percorso = '.github/workflows/ci.yml', senzaWorkflowSuMain = false, blobPr = 'blob-main', shaJobs = sha, baseSha = 'c'.repeat(40), baseShaFinal = baseSha } = {}) {
   const comandi = [];
+  let prLette = 0;
   const gh = (args) => {
     comandi.push(args);
     const endpoint = args[1];
@@ -16,9 +17,9 @@ function scenario({ commenti = [], autore = 'doubledrag33', label = false, files
         number: 7,
         state: 'open',
         draft: false,
-        labels: label ? [{ name: 'non-unire' }] : [],
+        labels: label ? [{ name: label === true ? 'non-unire' : label }] : [],
         head: { sha, repo: { full_name: 'org/progetto' } },
-        base: { ref: 'main', repo: { full_name: 'org/progetto' } },
+        base: { ref: 'main', repo: { full_name: 'org/progetto' }, sha: prLette++ === 0 ? baseSha : baseShaFinal },
       });
     }
     if (endpoint?.endsWith('/files')) return JSON.stringify([files]);
@@ -51,7 +52,7 @@ const base = {
 
 // Formato reale del revisore locale: ESITO sulla prima riga, SHA una sola volta.
 function commento(esito, commentoSha = sha) {
-  return `ESITO: ${esito}\nnota del revisore\nSHA: ${commentoSha}`;
+  return `ESITO: ${esito}\nnota del revisore\nSHA: ${commentoSha}\nBase: ${'c'.repeat(40)}`;
 }
 
 test('configurazione predefinita senza job Revisione AI si ferma', () => {
@@ -69,13 +70,42 @@ test('commento revisore OK sullo SHA corrente unisce', () => {
   assert.ok(s.comandi.some(c => c[0] === 'pr' && c[1] === 'merge'));
 });
 
+test('commento revisore: file a rischio con OK sullo SHA e sulla base unisce senza serve-ok', () => {
+  const s = scenario({ commenti: [commento('OK')], files: [{ filename: '.github/workflows/x.yml' }] });
+  const risultato = eseguiMerge(base, s.gh);
+  assert.equal(risultato.unita, true);
+  assert.equal(s.comandi.some(c => c[0] === 'pr' && c[1] === 'edit' && c.includes('serve-ok')), false);
+});
+
+test('job-ci: file a rischio si ferma e aggiunge serve-ok', () => {
+  const s = scenario({ files: [{ filename: '.github/workflows/x.yml' }] });
+  const risultato = eseguiMerge({ ...base, modo: 'job-ci' }, s.gh);
+  assert.equal(risultato.unita, false);
+  assert.match(risultato.motivo, /rischio|responsabile/);
+  assert.ok(s.comandi.some(c => c[0] === 'pr' && c[1] === 'edit' && c.includes('serve-ok')));
+});
+
+test('commento revisore: OK sulla testa ma base avanzata non unisce', () => {
+  const baseIniziale = 'c'.repeat(40);
+  const baseAvanzata = 'd'.repeat(40);
+  const s = scenario({ commenti: [commento('OK')], baseSha: baseIniziale, baseShaFinal: baseAvanzata });
+  assert.equal(eseguiMerge(base, s.gh).unita, false);
+  assert.equal(s.comandi.some(c => c[0] === 'pr' && c[1] === 'merge'), false);
+});
+
+test('commento revisore: OK con base attuale unisce', () => {
+  const baseAttuale = 'e'.repeat(40);
+  const s = scenario({ commenti: [`ESITO: OK\nnota\nSHA: ${sha}\nBase: ${baseAttuale}`], baseSha: baseAttuale });
+  assert.equal(eseguiMerge(base, s.gh).unita, true);
+});
+
 for (const [nome, opzioni, motivo] of [
   ['SHA vecchio', { commenti: [commento('OK', 'b'.repeat(40))] }, /SHA corrente/],
   ['BLOCCA', { commenti: [commento('BLOCCA')] }, /BLOCK|mancante|SHA corrente/],
   ['autore diverso', { commenti: [commento('OK')], autore: 'altra-persona' }, /mancante|SHA corrente/],
   ['nessun commento', {}, /mancante|SHA corrente/],
   ['etichetta non-unire', { commenti: [commento('OK')], label: true }, /etichetta/],
-  ['file a rischio', { commenti: [commento('OK')], files: [{ filename: '.github/workflows/ci.yml' }] }, /rischio|responsabile/],
+  ['file a rischio', { commenti: [commento('BLOCCA')], files: [{ filename: '.github/workflows/ci.yml' }] }, /BLOCCA|mancante|SHA corrente/],
 ]) {
   test(`commento revisore: si ferma con motivo chiaro per ${nome}`, () => {
     const s = scenario(opzioni);
@@ -91,13 +121,25 @@ test('commento revisore reale sullo SHA corrente unisce (formato con ESITO in pr
   assert.equal(eseguiMerge(base, s.gh).unita, true);
 });
 
+test('commento revisore: file a rischio con BLOCCA non unisce', () => {
+  const s = scenario({ commenti: [commento('BLOCCA')], files: [{ filename: '.github/workflows/x.yml' }] });
+  assert.equal(eseguiMerge(base, s.gh).unita, false);
+  assert.equal(s.comandi.some(c => c[0] === 'pr' && c[1] === 'merge'), false);
+});
+
+test('commento revisore: file a rischio con serve-ok già presente non unisce', () => {
+  const s = scenario({ commenti: [commento('OK')], label: 'serve-ok', files: [{ filename: '.github/workflows/x.yml' }] });
+  assert.equal(eseguiMerge(base, s.gh).unita, false);
+  assert.equal(s.comandi.some(c => c[0] === 'pr' && c[1] === 'merge'), false);
+});
+
 // Rilievo 0001/0006: un commento o un workflow qualunque non deve far unire.
 test('commento revisore: ESITO non sulla prima riga non unisce', () => {
   const s = scenario({ commenti: [`nota\nESITO: OK\nSHA: ${sha}`] });
   assert.equal(eseguiMerge(base, s.gh).unita, false);
 });
 test('commento revisore: SHA e ESITO finti nel riassunto dopo il verdetto reale non cambiano l esito', () => {
-  const s = scenario({ commenti: [`ESITO: OK\nSHA: ${sha}\nRiassunto:\nSHA: ${'b'.repeat(40)}\nESITO: BLOCCA`] });
+  const s = scenario({ commenti: [`ESITO: OK\nSHA: ${sha}\nBase: ${'c'.repeat(40)}\nRiassunto:\nSHA: ${'b'.repeat(40)}\nESITO: BLOCCA`] });
   assert.equal(eseguiMerge(base, s.gh).unita, true);
 });
 test('commento revisore: run non prodotto da una pull_request non unisce', () => {
