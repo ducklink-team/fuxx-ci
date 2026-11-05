@@ -86,7 +86,7 @@ jobs:
       - name: Inventario licenze Node
         if: inputs.linguaggio == 'node'
         working-directory: ${{ inputs.directory }}
-        run: "$RUNNER_TEMP/fuxx-licenze/node_modules/.bin/license-checker-rseidelsohn" --start . --json --out "$RUNNER_TEMP/licenze.json"
+        run: '"$RUNNER_TEMP/fuxx-licenze/node_modules/.bin/license-checker-rseidelsohn" --start . --json --out "$RUNNER_TEMP/licenze.json"'
       - name: Strumenti Python in ambiente separato
         if: inputs.linguaggio == 'python'
         run: |
