@@ -7,7 +7,7 @@ permissions:
   contents: read
 jobs:
   sito:
-    uses: ducklink-team/fuxx-ci/.github/workflows/controllo-sito.yml@v1
+    uses: ducklink-team/fuxx-ci/.github/workflows/controllo-sito.yml@v4
     with:
       url: ${{ vars.DEMO_URL }}
     secrets:

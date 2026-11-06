@@ -11,10 +11,10 @@ permissions:
   actions: write
 jobs:
   merge:
-    uses: ducklink-team/fuxx-ci/.github/workflows/merge-automatico.yml@v2
+    uses: ducklink-team/fuxx-ci/.github/workflows/merge-automatico.yml@v4
     with:
       modo: commento-revisore
-      # Gli script devono venire dalla stessa versione: v1 non conosce il modo commento-revisore.
-      versione-ci: v2
+      # Gli script devono venire dalla stessa versione del workflow riusabile.
+      versione-ci: v4
     secrets:
       LETTURA_CI: ${{ secrets.LETTURA_CI }}

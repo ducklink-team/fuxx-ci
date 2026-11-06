@@ -22,11 +22,11 @@ jobs:
       - run: npm ci
       - run: npm run lint && npm run typecheck && npm test && npm run build && npm run controlli
   sicurezza:
-    uses: ducklink-team/fuxx-ci/.github/workflows/sicurezza.yml@v1
+    uses: ducklink-team/fuxx-ci/.github/workflows/sicurezza.yml@v4
     with:
       linguaggio: node
     secrets:
       LETTURA_CI: ${{ secrets.LETTURA_CI }}
 # La revisione AI non sta in questo workflow: il codice della PR non deve mai ricevere la chiave OpenRouter.
 # Il revisore locale scrive il commento ESITO sullo SHA di testa, letto da merge-progetto.yml.
-# Affiancare merge-progetto.yml: richiama merge-automatico.yml@v2 dopo questo workflow.
+# Affiancare merge-progetto.yml: richiama merge-automatico.yml@v4 dopo questo workflow.

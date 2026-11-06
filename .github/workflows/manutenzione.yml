@@ -1,0 +1,32 @@
+name: Manutenzione
+
+on:
+  schedule:
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  manutenzione:
+    name: Manutenzione
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout con storia completa
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Aggiornamento e controllo dipendenze
+        run: npm install --package-lock-only --ignore-scripts --no-audit
+
+      - name: Controllo sicurezza con npm audit
+        run: npm audit --audit-level=high
+
+      - name: Pulizia rami uniti e artefatti vecchi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/manutenzione.mjs

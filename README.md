@@ -1,6 +1,6 @@
 # fuxx-ci — CI centrale FUXX
 
-Cartella pronta a diventare la radice di `ducklink-team/fuxx-ci`, dopo il merge della corsia G. Qui non sono stati creati repository, tag o impostazioni dell'organizzazione. L'esempio di merge usa `@v2`: il tag dovrà esistere nel repository pubblicato. Gli script sono Node ESM, senza dipendenze del progetto.
+Cartella pronta a diventare la radice di `ducklink-team/fuxx-ci`, dopo il merge della corsia G. Il repository pubblicato usa il tag stabile `v4` per i workflow riusabili. Gli script sono Node ESM, senza dipendenze del progetto.
 
 ## Contenuto e utilizzo
 
@@ -25,7 +25,7 @@ Nel futuro repository centrale: **Settings → Actions → General → Access �
 
 **Scaricare il workflow e fare checkout degli script sono operazioni diverse.** `ducklink-team/fuxx-ci` è pubblico, quindi il workflow riusabile funziona anche senza `LETTURA_CI`; se il secret è configurato lo usa ancora, altrimenti usa il token del workflow. Per un repository centrale privato usare un token fine-grained con sola permission **Contents: read**, solo sul repository centrale e con scadenza, oppure un installation token di una GitHub App con lo stesso accesso. Configurarlo nei repository chiamanti; nessun valore va nei file. Il checkout disabilita `persist-credentials`. Vedi [checkout di un altro repository privato](https://github.com/actions/checkout#checkout-multiple-repos-private).
 
-L'input `versione-ci` deve corrispondere al tag del workflow chiamato (default `v1`). Aggiornare insieme `uses: ...@vN`, checkout dell'adattatore AI ed eventuale input. Le azioni sono versionate per major; gli strumenti pip e il registro delle regole Semgrep sono aggiornati a ogni run. Renovate ne segnala gli aggiornamenti dove supportati.
+L'input `versione-ci` deve corrispondere al tag del workflow chiamato (default `v4`). Aggiornare insieme `uses: ...@vN`, checkout dell'adattatore AI ed eventuale input. Le azioni sono versionate per major; gli strumenti pip e il registro delle regole Semgrep sono aggiornati a ogni run. Renovate ne segnala gli aggiornamenti dove supportati.
 
 GitHub Free per organizzazioni comprende una quota mensile di minuti/storage, non esecuzione privata illimitata. Prima dell'attivazione verificare il budget con Matteo e mantenere il limite di spesa a zero; nessun consumo è stato misurato da questa corsia. [Quote ufficiali Actions](https://docs.github.com/en/billing/concepts/product-billing/github-actions).
 
@@ -51,7 +51,7 @@ Un merge effettuato con `GITHUB_TOKEN` **non genera una nuova esecuzione dei wor
 
 ## Sicurezza
 
-Cosa blocca ora (da attivare con un nuovo tag: qui non è stato creato né spostato alcun tag):
+Cosa blocca ora (da attivare con il tag pubblicato `v4`):
 
 - **Revisione AI:** l'esempio CI non contiene più il job con `OPENROUTER_API_KEY`, quindi nessun codice della PR la riceve. Il job legacy `modo: job-ci` è sconsigliato: il suo log lo scrive la PR.
 - **Gitleaks:** il workflow scrive una config con sole regole predefinite (non dipende dal checkout di `versione-ci`): l'allowlist di `.gitleaks.toml` del progetto e i commenti `gitleaks:allow` non spengono la scansione. Un `.gitleaksignore` del progetto resta valido, ma una PR che lo aggiunge o lo modifica va all'OK del responsabile.

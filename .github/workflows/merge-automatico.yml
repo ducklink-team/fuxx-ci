@@ -16,7 +16,7 @@ on:
         description: 'Modalita revisione: commento-revisore (consigliato) oppure job-ci (sconsigliato, legacy)'
       versione-ci:
         type: string
-        default: v1
+        default: v4
     secrets:
       LETTURA_CI:
         required: false
