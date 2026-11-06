@@ -1,0 +1,24 @@
+{
+  "ruoli": {
+    "ci": {
+      "strumento": "GitHub Actions: test Node, validazione workflow e actionlint",
+      "prova": {
+        "tipo": "workflow",
+        "valore": ".github/workflows/ci.yml"
+      }
+    },
+    "sicurezza": {
+      "strumento": "GitHub Actions: Gitleaks, Semgrep e audit dipendenze",
+      "prova": {
+        "tipo": "workflow",
+        "valore": ".github/workflows/sicurezza.yml"
+      }
+    }
+  },
+  "serve_il_ceo": [
+    "dipendenze: non è provato un aggiornamento automatico del repository stesso; renovate/default.json è solo un preset",
+    "backup e prova-di-ripristino: il repository contiene strumenti e configurazione, non dati o backup di servizio con prova di ripristino",
+    "prova-di-vita, errori-produzione e certificati: non è un servizio distribuito e non ci sono endpoint, monitoraggio o certificati di produzione",
+    "pulizia e rapporto: i workflow di merge e controllo sito sono riusabili o di esempio, ma non attestano manutenzione periodica di questo repository"
+  ]
+}
