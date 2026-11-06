@@ -83,7 +83,8 @@ export function ghReale(args, esegui = execFileSync) {
       : args.slice(0, 2);
     const comando = parti.filter(Boolean).join(' ');
     const e = new Error(`Chiamata GitHub CLI fallita: ${comando}`);
-    const status = Number(errore.status) || Number(String(errore.stderr).match(/HTTP(?:\/\S+)?\s+(\d{3})/i)?.[1]);
+    const statoHttp = Number(String(errore.stderr).match(/HTTP(?:\/\S+)?\s+(\d{3})/i)?.[1]);
+    const status = statoHttp || Number(errore.status);
     if (status) e.message += ` HTTP ${status}`;
     if (status) e.status = status;
     throw e;
