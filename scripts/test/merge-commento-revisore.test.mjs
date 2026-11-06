@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { eseguiMerge } from '../merge.mjs';
+import { eseguiMerge, ghReale } from '../merge.mjs';
 
 const sha = 'a'.repeat(40);
 const baseApprovata = 'c'.repeat(40);
@@ -36,7 +36,12 @@ function scenario({ commenti = [], autore = 'doubledrag33', label = false, files
   const gh = (args) => {
     comandi.push(args);
     if (erroreRipiego && args[0] === 'pr' && args[1] === 'merge') throw new Error('Ripiego rifiutato');
+    if (args[0] === 'label' && args[1] === 'create') return '';
     const endpoint = args[1];
+    if (args[0] === 'api' && args[1] === '-X') {
+      const apiEndpoint = args[3];
+      if (apiEndpoint === 'repos/org/progetto/issues/7/labels' || apiEndpoint === 'repos/org/progetto/issues/7/comments') return '';
+    }
     if (endpoint === 'repos/org/progetto/pulls/7') {
       return JSON.stringify({
         number: 7,
@@ -157,7 +162,20 @@ test('job-ci: file a rischio si ferma e aggiunge serve-ok', () => {
   const risultato = eseguiMerge({ ...base, modo: 'job-ci' }, s.gh);
   assert.equal(risultato.unita, false);
   assert.match(risultato.motivo, /rischio|responsabile/);
-  assert.ok(s.comandi.some(c => c[0] === 'pr' && c[1] === 'edit' && c.includes('serve-ok')));
+  assert.ok(s.comandi.some(c => c[0] === 'label' && c[1] === 'create' && c.includes('serve-ok')));
+  assert.deepEqual(s.comandi.find(c => c[0] === 'api' && c[3] === 'repos/org/progetto/issues/7/labels'), ['api', '-X', 'POST', 'repos/org/progetto/issues/7/labels', '-f', 'labels[]=serve-ok']);
+  assert.deepEqual(s.comandi.find(c => c[0] === 'api' && c[3] === 'repos/org/progetto/issues/7/comments'), ['api', '-X', 'POST', 'repos/org/progetto/issues/7/comments', '-f', "body=serve l'OK del responsabile: .github/workflows/x.yml"]);
+  assert.equal(s.comandi.some(c => c[0] === 'pr' && (c[1] === 'edit' || c[1] === 'comment')), false);
+});
+
+test('job-ci: errore REST HTTP 403 espone solo sottocomando e stato', () => {
+  const errore = new Error('contenuto remoto segreto');
+  errore.stderr = 'gh: Resource not accessible by integration (HTTP 403)';
+  assert.throws(() => ghReale(['api', '-X', 'POST', 'repos/org/progetto/issues/7/labels', '-f', 'labels[]=serve-ok'], () => { throw errore; }), erroreGitHub => {
+    assert.match(erroreGitHub.message, /Chiamata GitHub CLI fallita: api POST repos\/org\/progetto\/issues\/7\/labels HTTP 403/);
+    assert.doesNotMatch(erroreGitHub.message, /Resource not accessible|segreto/);
+    return true;
+  });
 });
 
 test('commento revisore: OK sulla testa ma base avanzata non unisce', () => {
