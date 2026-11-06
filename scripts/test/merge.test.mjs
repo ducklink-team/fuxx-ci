@@ -64,8 +64,10 @@ for (const [nome, opzioni] of Object.entries({ bozza: { pr: { draft: true } }, '
 test('file a rischio: etichetta e commento senza merge', () => {
   const s = scenario({ files: [{ filename: '.github/workflows/ci.yml' }] });
   assert.equal(eseguiMerge(base, s.gh).unita, false);
-  assert.ok(s.comandi.some(c => c.includes('serve-ok')));
-  assert.ok(s.comandi.some(c => c.includes("serve l'OK del responsabile: .github/workflows/ci.yml")));
+  assert.ok(s.comandi.some(c => c[0] === 'label' && c[1] === 'create' && c.includes('serve-ok')));
+  assert.deepEqual(s.comandi.find(c => c[0] === 'api' && c[3] === 'repos/org/progetto/issues/7/labels'), ['api', '-X', 'POST', 'repos/org/progetto/issues/7/labels', '-f', 'labels[]=serve-ok']);
+  assert.deepEqual(s.comandi.find(c => c[0] === 'api' && c[3] === 'repos/org/progetto/issues/7/comments'), ['api', '-X', 'POST', 'repos/org/progetto/issues/7/comments', '-f', "body=serve l'OK del responsabile: .github/workflows/ci.yml"]);
+  assert.equal(s.comandi.some(c => c[0] === 'pr' && (c[1] === 'edit' || c[1] === 'comment')), false);
 });
 test('PR verde: merge squash vincolato allo SHA e dispatch demo', () => {
   const s = scenario();

@@ -71,16 +71,22 @@ export function leggiCommentoRevisore(commenti, sha, base) {
   return esito === 'OK' && commentoSha === sha && commentoBase === base ? 'OK' : (esito === 'BLOCCA' ? 'BLOCCA' : 'SCONOSCIUTA');
 }
 
-function ghReale(args) {
-  try { return execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 20 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] }); }
+export function ghReale(args, esegui = execFileSync) {
+  try { return esegui('gh', args, { encoding: 'utf8', maxBuffer: 20 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] }); }
   catch (errore) {
     // Con --include anche gh non-zero conserva su stdout stato e corpo REST.
     // Il chiamante li interpreta senza stampare messaggi remoti.
     if (args.includes('--include') && /^HTTP\/\S+ \d{3}/.test(String(errore.stdout))) return String(errore.stdout);
-    // Non stampare log della revisione o contenuti remoti, potenzialmente sensibili.
-    const e = new Error('Chiamata GitHub CLI fallita');
-    const status = String(errore.stderr).match(/HTTP (\d{3})/);
-    if (status) e.status = Number(status[1]);
+    // Non stampare stderr, log della revisione o contenuti remoti, potenzialmente sensibili.
+    const parti = args[0] === 'api'
+      ? ['api', args.includes('-X') ? args[args.indexOf('-X') + 1] : args.includes('--method') ? args[args.indexOf('--method') + 1] : null, args.find(arg => /^(?:repos|branches|graphql)\//.test(arg) || arg === 'graphql')]
+      : args.slice(0, 2);
+    const comando = parti.filter(Boolean).join(' ');
+    const e = new Error(`Chiamata GitHub CLI fallita: ${comando}`);
+    const statoHttp = Number(String(errore.stderr).match(/HTTP(?:\/\S+)?\s+(\d{3})/i)?.[1]);
+    const status = statoHttp || Number(errore.status);
+    if (status) e.message += ` HTTP ${status}`;
+    if (status) e.status = status;
     throw e;
   }
 }
@@ -188,8 +194,8 @@ export function eseguiMerge(dati, gh = ghReale) {
   const rischiosi = files.filter(fileARischio);
   if (rischiosi.length && modo === 'job-ci') {
     gh(['label', 'create', 'serve-ok', '--repo', repository, '--color', 'D93F0B', '--description', 'Richiede OK del responsabile', '--force']);
-    gh(['pr', 'edit', String(numero), '--repo', repository, '--add-label', 'serve-ok']);
-    gh(['pr', 'comment', String(numero), '--repo', repository, '--body', `serve l'OK del responsabile: ${rischiosi.map(f => f.filename).join(', ')}`]);
+    gh(['api', '-X', 'POST', `repos/${repository}/issues/${numero}/labels`, '-f', 'labels[]=serve-ok']);
+    gh(['api', '-X', 'POST', `repos/${repository}/issues/${numero}/comments`, '-f', `body=serve l'OK del responsabile: ${rischiosi.map(f => f.filename).join(', ')}`]);
     return ferma('File a rischio: serve OK del responsabile');
   }
   let commenti;
