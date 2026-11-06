@@ -153,5 +153,45 @@ test('la paginazione gestisce misti, pagina finale corta, vuoto, artefatto gia r
   assert.equal(result.alreadyGone.length, 1);
   assert.ok(deleted.every((id) => id % 2 === 1));
   assert.deepEqual(await maintenance.cleanArtifacts({ api: { list: async () => ({ total_count: 0, artifacts: [] }), remove: async () => assert.fail('non chiamare') }, now: 0 }), { deleted: [], alreadyGone: [] });
-  await assert.rejects(() => maintenance.cleanArtifacts({ api: { list: async () => { throw new Error('API down'); } }, now: 0 }), /API down/);
+  await assert.rejects(() => maintenance.cleanArtifacts({ api: { list: async () => { throw new Error('API down'); }, remove: async () => {} }, now: 0 }), /API down/);
+});
+
+test('l adattatore gh riconosce il 404 dallo stderr e non dal codice di uscita', async () => {
+  const maintenance = await import('../manutenzione.mjs');
+  await assert.rejects(
+    () => maintenance.ghApi(['repos/ducklink-team/fuxx-ci/actions/artifacts/1'], {
+      runCommand: async () => {
+        throw Object.assign(new Error('processo gh fallito'), {
+          code: 1,
+          stderr: 'gh: Not Found (HTTP 404)',
+        });
+      },
+    }),
+    (error) => {
+      assert.equal(error.status, 404);
+      assert.notEqual(error.code, 404);
+      return true;
+    },
+  );
+});
+
+test('la pulizia rifiuta input e risposte API vuote o con date impossibili', async () => {
+  const maintenance = await import('../manutenzione.mjs');
+  const emptyApi = { list: async () => ({ total_count: 0, artifacts: [] }), remove: async () => {} };
+  await assert.rejects(() => maintenance.cleanArtifacts({ api: emptyApi, pageSize: 0 }), /pageSize non valido/);
+  await assert.rejects(() => maintenance.cleanArtifacts({ api: emptyApi, now: Number.NaN }), /ora non valida/);
+  await assert.rejects(
+    () => maintenance.cleanArtifacts({
+      api: { list: async () => ({ total_count: 1 }), remove: async () => {} },
+      now: Date.parse('2026-11-06T00:00:00Z') / 1000,
+    }),
+    /risposta artefatti non valida/,
+  );
+  await assert.rejects(
+    () => maintenance.cleanArtifacts({
+      api: { list: async () => ({ total_count: 1, artifacts: [{ id: 1, updated_at: '2026-02-30T00:00:00Z' }] }), remove: async () => {} },
+      now: Date.parse('2026-11-06T00:00:00Z') / 1000,
+    }),
+    /data non valida/,
+  );
 });
