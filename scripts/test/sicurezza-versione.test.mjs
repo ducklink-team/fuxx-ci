@@ -25,10 +25,12 @@ test('esempio di progetto: nessun job di revisione con la chiave e nessuno scrip
   assert.doesNotMatch(ci, /OPENROUTER|revisione-ai|revisione\.mjs/);
 });
 
-test('esempio di merge: modo commento-revisore e script della versione v2', () => {
+test('esempio di merge: modo commento-revisore e script di una versione almeno v4', () => {
   const merge = leggi('../../esempi/merge-progetto.yml');
   assert.match(merge, /modo: commento-revisore/);
-  assert.match(merge, /versione-ci: v2/);
+  const versione = /versione-ci:\s*v(\d+)/.exec(merge);
+  assert.ok(versione, 'manca versione-ci');
+  assert.ok(Number(versione[1]) >= 4, `versione-ci troppo vecchia: v${versione[1]}`);
 });
 
 // Rilievi 0003 e 0004: niente soppressioni inserite dalla PR negli scanner.

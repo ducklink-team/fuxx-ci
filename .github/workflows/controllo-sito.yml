@@ -8,7 +8,7 @@ on:
         description: URL HTTPS della demo autorizzata
       versione-ci:
         type: string
-        default: v1
+        default: v4
     secrets:
       LETTURA_CI:
         required: true

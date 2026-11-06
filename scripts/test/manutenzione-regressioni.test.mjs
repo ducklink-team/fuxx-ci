@@ -82,7 +82,7 @@ test('la cancellazione dei rami usa lo SHA osservato e lascia vivo un push conco
   const { a, b } = await makeRepository();
   await createBranch(a, 'vecchio-unito', 'A', { merged: true });
   await createBranch(a, 'vecchio-immutato', 'old', { merged: true });
-  await createBranch(a, 'recente', 'recent', { age: new Date().toISOString() });
+  await createBranch(a, 'recente', 'recent', { age: '2026-11-05T00:00:00Z' });
   await createBranch(a, 'non-unito', 'unmerged', { age: '2000-01-01T00:00:00Z' });
   const maintenance = await import('../manutenzione.mjs');
   let raced = false;
