@@ -1,0 +1,61 @@
+name: Manutenzione
+
+on:
+  schedule:
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  manutenzione:
+    name: Manutenzione
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout con storia completa
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Aggiornamento e controllo dipendenze
+        run: npm install --package-lock-only --ignore-scripts --no-audit
+
+      - name: Controllo sicurezza con npm audit
+        run: npm audit --audit-level=high
+
+      - name: Pulizia rami uniti e artefatti vecchi
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          soglia=$(( $(date +%s) - 14*24*3600 ))
+          git fetch origin --prune
+          git for-each-ref --format='%(refname:strip=3) %(committerdate:unix)' refs/remotes/origin/ \
+            | while read -r ramo data; do
+                [ -z "${ramo}" ] && continue
+                [ "${ramo}" = "main" ] && continue
+                if git merge-base --is-ancestor "origin/${ramo}" origin/main && [ "${data}" -lt "${soglia}" ]; then
+                  echo "Cancello ramo unito e vecchio: ${ramo}"
+                  gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${ramo}"
+                fi
+              done
+
+          pagina=1
+          while :; do
+            risposta="$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?per_page=100&page=${pagina}")"
+            ids="$(printf '%s' "${risposta}" | jq -r --argjson soglia "${soglia}" \
+              '.artifacts[] | select((.updated_at | fromdateiso8601) < $soglia) | .id')"
+            while read -r id; do
+              [ -z "${id}" ] && continue
+              echo "Cancello artefatto vecchio: ${id}"
+              gh api -X DELETE "repos/${GITHUB_REPOSITORY}/actions/artifacts/${id}"
+            done <<< "${ids}"
+            totale="$(printf '%s' "${risposta}" | jq -r '.total_count // 0')"
+            [ "${pagina}" -ge "$(( (totale + 99) / 100 ))" ] && break
+            pagina=$((pagina + 1))
+          done
