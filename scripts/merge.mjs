@@ -172,6 +172,20 @@ function mergeCommentoRevisore(repository, numero, sha, pr, gh, api, ferma, avvi
   return null;
 }
 
+function controlloPrenotazione(pr, numero, pagine) {
+  if (!pr.labels.some(l => l.name === 'in-lavorazione')) return null;
+  let eventi;
+  try { eventi = pagine(`issues/${numero}/events`).flat(); }
+  catch { return 'fermata: in-lavorazione da età non leggibile'; }
+  const prenotazioni = eventi.filter(evento => evento?.event === 'labeled' && evento?.label?.name === 'in-lavorazione');
+  const date = prenotazioni.map(evento => Date.parse(evento.created_at));
+  if (!date.length || date.some(Number.isNaN)) return 'fermata: in-lavorazione da età non leggibile';
+  const piuRecente = Math.max(...date);
+  const minuti = Math.max(0, Math.floor((Date.now() - piuRecente) / 60000));
+  if (Date.now() - piuRecente <= 2 * 60 * 60 * 1000) return `fermata: in-lavorazione da ${minuti} min`;
+  return null;
+}
+
 export function eseguiMerge(dati, gh = ghReale) {
   const { repository, numero, runId, sha, controlli, revisione, modo = 'job-ci' } = dati;
   if (!/^[\w.-]+\/[\w.-]+$/.test(repository) || !/^\d+$/.test(String(numero)) || !/^\d+$/.test(String(runId)) || !/^[a-f\d]{40}$/.test(sha)) throw new Error('Identificativi PR non validi');
@@ -182,7 +196,10 @@ export function eseguiMerge(dati, gh = ghReale) {
   const pr = api(`pulls/${numero}`);
   const ammessa = p => p.state === 'open' && !p.draft && p.head.sha === sha && p.head.repo?.full_name === repository && p.base.repo?.full_name === repository && p.base.ref === 'main'
     && !p.labels.some(l => ['non-unire', 'serve-ok'].includes(l.name));
+  const controllaPrenotazione = p => controlloPrenotazione(p, numero, pagine);
   if (!ammessa(pr)) return ferma('PR non ammessa, SHA cambiato, bozza, fork o etichetta di arresto');
+  const prenotazione = controllaPrenotazione(pr);
+  if (prenotazione) return ferma(prenotazione);
   const files = pagine(`pulls/${numero}/files`).flat();
   if (!files.length || files.length >= 3000) return ferma('Elenco file assente o potenzialmente troncato');
   for (const file of files.filter(f => SQL.test(f.filename) && f.status !== 'removed')) {
@@ -226,6 +243,8 @@ export function eseguiMerge(dati, gh = ghReale) {
   try { api('actions/workflows/demo.yml'); } catch (e) { if (e.status === 404) demo = false; else throw e; }
   const prFinale = api(`pulls/${numero}`);
   if (!ammessa(prFinale)) return ferma('PR cambiata durante i controlli');
+  const prenotazioneFinale = controllaPrenotazione(prFinale);
+  if (prenotazioneFinale) return ferma(prenotazioneFinale);
   if (modo === 'commento-revisore' && leggiCommentoRevisore(commenti, sha, prFinale.base?.sha) !== 'OK') return ferma('Revisione commento mancante, BLOCCA o non riferita allo SHA corrente o alla base corrente');
   const avvisi = [];
   const avvisa = motivo => { avvisi.push(motivo); console.warn(`Avviso: ${motivo}`); };
