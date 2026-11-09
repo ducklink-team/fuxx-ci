@@ -17,6 +17,10 @@ on:
       versione-ci:
         type: string
         default: v4
+      runner:
+        type: string
+        default: '"ubuntu-latest"'
+        description: 'Runner in JSON: "ubuntu-latest" oppure ["self-hosted","fuxx-vps"]'
     secrets:
       LETTURA_CI:
         required: false
@@ -31,7 +35,7 @@ concurrency:
 jobs:
   merge:
     if: github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runner) }}
     timeout-minutes: 5
     steps:
       # Mai checkout del ramo PR o esecuzione di suoi artefatti con token write.

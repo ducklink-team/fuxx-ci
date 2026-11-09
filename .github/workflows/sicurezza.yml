@@ -15,6 +15,10 @@ on:
       versione-ci:
         type: string
         default: v4
+      runner:
+        type: string
+        default: '"ubuntu-latest"'
+        description: 'Runner in JSON: "ubuntu-latest" oppure ["self-hosted","fuxx-vps"]'
     secrets:
       LETTURA_CI:
         required: true
@@ -24,7 +28,7 @@ permissions:
 jobs:
   sicurezza:
     name: Sicurezza
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runner) }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
