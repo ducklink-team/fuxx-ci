@@ -15,6 +15,8 @@ Per il controllo settimanale copiare `esempi/controllo-settimanale.yml`, imposta
 
 Gli input `linguaggio: node|python`, `directory` (default `.`) e `requirements` (default `requirements.txt`, relativo alla directory progetto) configurano la sicurezza. Per Python usare il proprio job di test al posto del job npm nell'esempio. Audit Python blocca ogni vulnerabilità nota e la raccolta incompleta; audit Node blocca `high` e `critical`. Occorrono `package-lock.json` per Node oppure requirements installabili per Python, con tutte le dipendenze da verificare. I file di lock alternativi vanno esportati in requirements prima della chiamata.
 
+L'input `runner` (stringa JSON, default `"ubuntu-latest"`) sceglie il runner dei tre workflow riusabili, per esempio `runner: ${{ vars.CI_RUNNER || '"ubuntu-latest"' }}` con `["self-hosted","fuxx-vps"]` in `CI_RUNNER`. `controllo-sito` usa docker: sui runner `fuxx-vps` senza socket Docker non funziona, quindi lasciarlo su `ubuntu-latest`.
+
 L'inventario include dipendenze transitive e di sviluppo installate. Lista consentita: MIT, ISC, Apache-2.0, BSD-2-Clause, BSD-3-Clause, 0BSD, CC0-1.0, Unlicense, Python-2.0. Espressioni SPDX AND/OR vengono valutate; nomi storici Python non riconosciuti, eccezioni WITH e licenze mancanti generano avvisi. Una licenza fuori lista **non** blocca; un inventario illeggibile o non eseguito blocca. È un controllo dei metadati, non una valutazione legale.
 
 ## Accesso privato e piano Free
