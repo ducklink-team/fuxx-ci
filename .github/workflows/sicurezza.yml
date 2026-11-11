@@ -14,7 +14,7 @@ on:
         default: requirements.txt
       versione-ci:
         type: string
-        default: v4
+        default: v6
       runner:
         type: string
         default: '"ubuntu-latest"'
@@ -66,6 +66,20 @@ jobs:
 
           [extend]
           useDefault = true
+
+          # Impronte sha256 dei mattoni (manifest e relativo test): solo 64 esadecimali minuscoli in questi due file.
+          # AND: una chiave vera, anche in questi file, non esadecimale a 64 caratteri, viene ancora segnalata.
+          [[allowlists]]
+          description = "impronte sha256 dei mattoni: solo esadecimali a 64 caratteri nei due file"
+          condition = "AND"
+          regexTarget = "secret"
+          paths = [
+            '''(^|/)\.fuxx/mattoni\.json$''',
+            '''(^|/)tests/mattoni-manifest\.test\.ts$''',
+          ]
+          regexes = [
+            '''^[0-9a-f]{64}$''',
+          ]
           TOML
           "$RUNNER_TEMP/gitleaks" git --redact -v --config "$RUNNER_TEMP/gitleaks-fuxx.toml" --ignore-gitleaks-allow .
       # Semgrep CE, regole pubbliche, senza login: https://semgrep.dev/products/community-edition
