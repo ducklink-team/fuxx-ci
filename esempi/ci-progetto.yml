@@ -27,6 +27,11 @@ jobs:
       linguaggio: node
     secrets:
       LETTURA_CI: ${{ secrets.LETTURA_CI }}
+  # Solo avvisi (knip, jscpd). qualita.yml esiste da v7: sicurezza e merge possono restare su v6.
+  qualita:
+    uses: ducklink-team/fuxx-ci/.github/workflows/qualita.yml@v7
+    with:
+      linguaggio: node
 # La revisione AI non sta in questo workflow: il codice della PR non deve mai ricevere la chiave OpenRouter.
 # Il revisore locale scrive il commento ESITO sullo SHA di testa, letto da merge-progetto.yml.
 # Affiancare merge-progetto.yml: richiama merge-automatico.yml@v4 dopo questo workflow.

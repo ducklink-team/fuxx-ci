@@ -1,0 +1,165 @@
+name: Qualità riutilizzabile
+on:
+  workflow_call:
+    inputs:
+      linguaggio:
+        type: string
+        default: node
+        description: node oppure python
+      directory:
+        type: string
+        default: .
+        description: Directory del progetto da analizzare
+permissions:
+  contents: read
+jobs:
+  qualita:
+    name: Qualità
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Mai bloccante: anche un errore del job intero (timeout, setup) non deve rendere rossa la CI del chiamante.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Valida input
+        continue-on-error: true
+        env:
+          LINGUAGGIO: ${{ inputs.linguaggio }}
+        run: node -e 'if (!["node", "python"].includes(process.env.LINGUAGGIO)) throw new Error("linguaggio deve essere node o python")'
+      # Fiducia pari a npm test: knip carica le config del progetto, ma qui ci sono solo contents: read,
+      # persist-credentials: false, --ignore-scripts e nessun segreto.
+      - name: Installa dipendenze Node per knip
+        if: inputs.linguaggio == 'node'
+        continue-on-error: true
+        working-directory: ${{ inputs.directory }}
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci --ignore-scripts
+          elif [ -f package.json ]; then
+            npm install --ignore-scripts --no-audit --no-fund
+          else
+            echo '::warning::knip saltato: package.json assente'
+          fi
+      - name: Knip 6.44.1
+        if: inputs.linguaggio == 'node'
+        continue-on-error: true
+        working-directory: ${{ inputs.directory }}
+        shell: bash
+        run: |
+          if [ ! -f package.json ]; then
+            exit 0
+          fi
+          mkdir -p "$RUNNER_TEMP/qualita"
+          set +e
+          npx --yes knip@6.44.1 --reporter json > "$RUNNER_TEMP/qualita/knip.json" 2> "$RUNNER_TEMP/qualita/knip.stderr"
+          status=$?
+          set -e
+          echo "$status" > "$RUNNER_TEMP/qualita/knip.status"
+          exit 0
+      - name: jscpd 5.4.2
+        continue-on-error: true
+        working-directory: ${{ inputs.directory }}
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/qualita/jscpd"
+          set +e
+          npx --yes jscpd@5.4.2 \
+            --min-tokens 50 \
+            --reporters json \
+            --output "$RUNNER_TEMP/qualita/jscpd" \
+            --ignore '**/node_modules/**,**/dist/**,**/.next/**,**/coverage/**,**/.worktree/**,**/eventi/**,**/.tmp-test-*/**,**/test/**,**/*.test.*' \
+            . > "$RUNNER_TEMP/qualita/jscpd.stdout" 2> "$RUNNER_TEMP/qualita/jscpd.stderr"
+          status=$?
+          set -e
+          echo "$status" > "$RUNNER_TEMP/qualita/jscpd.status"
+          exit 0
+      - name: Scrivi riepilogo qualità
+        if: always()
+        continue-on-error: true
+        env:
+          LINGUAGGIO: ${{ inputs.linguaggio }}
+          DIRECTORY: ${{ inputs.directory }}
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/qualita"
+          cat > "$RUNNER_TEMP/qualita/summary.mjs" <<'NODE'
+          import { appendFileSync, existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+          import { join } from 'node:path';
+
+          const root = process.env.RUNNER_TEMP + '/qualita';
+          const summary = process.env.GITHUB_STEP_SUMMARY;
+          const warnings = [];
+          const readJson = (file) => {
+            try { return JSON.parse(readFileSync(file, 'utf8')); }
+            catch { return null; }
+          };
+          const list = (value) => Array.isArray(value) ? value : [];
+          const detail = (items) => items.slice(0, 30).map((item) => {
+            if (typeof item === 'string') return item;
+            return item.file ?? item.path ?? item.name ?? item.symbol ?? JSON.stringify(item);
+          });
+          const status = (name) => {
+            const file = join(root, `${name}.status`);
+            return existsSync(file) ? readFileSync(file, 'utf8').trim() : 'non eseguito';
+          };
+
+          let output = `## Controllo qualità\n\n- Linguaggio: \`${process.env.LINGUAGGIO}\`\n- Directory: \`${process.env.DIRECTORY}\`\n`;
+          if (process.env.LINGUAGGIO === 'node') {
+            const lock = join(process.env.GITHUB_WORKSPACE, process.env.DIRECTORY, 'package.json');
+            const file = join(root, 'knip.json');
+            if (!existsSync(lock)) {
+              output += '\n### knip\n\n⚠️ Saltato: package.json assente.\n';
+            } else {
+              const report = readJson(file);
+              if (!report) {
+                warnings.push(`knip non ha prodotto un report JSON (uscita ${status('knip')})`);
+                output += `\n### knip\n\n⚠️ Strumento non disponibile o configurazione non valida (uscita ${status('knip')}).\n`;
+              } else {
+                const issues = list(report.issues);
+                const files = issues.flatMap((issue) => list(issue.files));
+                const exports = issues.flatMap((issue) => list(issue.exports).map((e) => `${issue.file}: ${e.name ?? JSON.stringify(e)}`));
+                const dependencies = issues.flatMap((issue) => [...list(issue.dependencies), ...list(issue.devDependencies)].map((d) => `${issue.file}: ${d.name ?? JSON.stringify(d)}`));
+                output += `\n### knip\n\n- File inutilizzati: **${files.length}**\n- Export inutilizzati: **${exports.length}**\n- Dipendenze inutilizzate: **${dependencies.length}**\n`;
+                const lines = [...detail(files).slice(0, 10), ...detail(exports).slice(0, 10), ...detail(dependencies).slice(0, 10)];
+                if (lines.length) output += `\nDettagli (massimo 30):\n${lines.map((line) => `- ${line}`).join('\n')}\n`;
+              }
+            }
+          } else {
+            output += '\n### knip\n\n- Non applicabile: il linguaggio non è Node.\n';
+          }
+
+          const candidates = [];
+          const walk = (dir) => {
+            if (!existsSync(dir)) return;
+            for (const entry of readdirSync(dir)) {
+              const path = join(dir, entry);
+              if (statSync(path).isDirectory()) walk(path);
+              else if (entry.endsWith('.json')) candidates.push(path);
+            }
+          };
+          walk(join(root, 'jscpd'));
+          const jscpdFile = candidates.find((file) => file.endsWith('jscpd-report.json')) ?? candidates[0];
+          const jscpd = jscpdFile ? readJson(jscpdFile) : null;
+          if (!jscpd) {
+            warnings.push(`jscpd non ha prodotto un report JSON (uscita ${status('jscpd')})`);
+            output += `\n### jscpd\n\n⚠️ Strumento non disponibile o report non leggibile (uscita ${status('jscpd')}).\n`;
+          } else {
+            const duplicates = list(jscpd.duplicates ?? jscpd.clones);
+            const statistics = jscpd.statistics ?? {};
+            const total = statistics.total ?? {};
+            const grezza = Number(statistics.percentage ?? total.percentage ?? statistics.duplicates?.percentage ?? 0);
+          const percentage = Number.isFinite(grezza) ? grezza : 0;
+            output += `\n### jscpd\n\n- Blocchi duplicati: **${duplicates.length}**\n- Percentuale duplicata: **${Number(percentage).toFixed(1)}%**\n`;
+            const lines = detail(duplicates.map((d) => `${d.firstFile?.name}:${d.firstFile?.start} = ${d.secondFile?.name}:${d.secondFile?.start} (${d.lines} righe)`));
+            if (lines.length) output += `\nDettagli (massimo 30):\n${lines.map((line) => `- ${line}`).join('\n')}\n`;
+          }
+          if (warnings.length) output += `\n### Avvisi\n\n${warnings.map((warning) => `- ⚠️ ${warning}`).join('\n')}\n`;
+          appendFileSync(summary, output);
+          NODE
+          node "$RUNNER_TEMP/qualita/summary.mjs"
