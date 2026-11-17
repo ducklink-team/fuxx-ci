@@ -60,6 +60,17 @@ export function leggiCommentoRevisore(commenti, sha, base) {
     && commento.body.split(/\r?\n/).some(riga => /^ESITO:/.test(riga)));
   const ultimo = candidati.at(-1);
   if (!ultimo) return 'SCONOSCIUTA';
+  const valoreData = (nomi) => nomi.map(nome => ultimo[nome]).find(valore => valore !== undefined && valore !== null && valore !== '');
+  const creato = valoreData(['created_at', 'createdAt']);
+  const modifiche = ['updated_at', 'updatedAt', 'last_edited_at', 'lastEditedAt']
+    .map(nome => ultimo[nome]).filter(valore => valore !== undefined && valore !== null && valore !== '');
+  if (modifiche.length) {
+    const istanteCreazione = Date.parse(creato ?? '');
+    if (Number.isNaN(istanteCreazione) || modifiche.some(valore => {
+      const istanteModifica = Date.parse(valore);
+      return Number.isNaN(istanteModifica) || istanteModifica > istanteCreazione;
+    })) return 'MODIFICATO';
+  }
   // Il revisore scrive ESITO sulla prima riga e poi la prima riga SHA, costruita dal codice; dopo vengono
   // il riassunto del modello e i nomi dei file della PR, che possono contenere righe ESITO o SHA finte.
   // Quindi si legge il verdetto dalla prima riga e lo SHA dalla prima riga SHA, mai "una qualunque".
@@ -245,7 +256,11 @@ export function eseguiMerge(dati, gh = ghReale) {
   if (!ammessa(prFinale)) return ferma('PR cambiata durante i controlli');
   const prenotazioneFinale = controllaPrenotazione(prFinale);
   if (prenotazioneFinale) return ferma(prenotazioneFinale);
-  if (modo === 'commento-revisore' && leggiCommentoRevisore(commenti, sha, prFinale.base?.sha) !== 'OK') return ferma('Revisione commento mancante, BLOCCA o non riferita allo SHA corrente o alla base corrente');
+  if (modo === 'commento-revisore') {
+    const verdettoCommento = leggiCommentoRevisore(commenti, sha, prFinale.base?.sha);
+    if (verdettoCommento === 'MODIFICATO') return ferma('Revisione commento modificata dopo la creazione: serve un nuovo verdetto');
+    if (verdettoCommento !== 'OK') return ferma('Revisione commento mancante, BLOCCA o non riferita allo SHA corrente o alla base corrente');
+  }
   const avvisi = [];
   const avvisa = motivo => { avvisi.push(motivo); console.warn(`Avviso: ${motivo}`); };
   if (modo === 'commento-revisore') {
