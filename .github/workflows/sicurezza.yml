@@ -96,7 +96,7 @@ jobs:
       - name: Audit Node bloccante high
         if: inputs.linguaggio == 'node'
         working-directory: ${{ inputs.directory }}
-        run: npm audit --audit-level=high
+        run: node "$GITHUB_WORKSPACE/__fuxx_ci/scripts/audit-npm.mjs"
       - name: Installa strumento licenze Node
         if: inputs.linguaggio == 'node'
         working-directory: ${{ runner.temp }}
