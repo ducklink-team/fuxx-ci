@@ -5,6 +5,7 @@ Cartella pronta a diventare la radice di `ducklink-team/fuxx-ci`, dopo il merge 
 ## Contenuto e utilizzo
 
 - `.github/workflows/sicurezza.yml`: gitleaks **8.30.1** con checksum, Semgrep CE, audit bloccante, inventario licenze con avvisi.
+- `.github/workflows/qualita.yml`: knip e jscpd non bloccanti per codice inutilizzato e duplicato.
 - `.github/workflows/merge-automatico.yml`: controlla PR e job dello stesso run/SHA, revisione esplicita, file a rischio; merge squash e dispatch della demo.
 - `.github/workflows/controllo-sito.yml`: header, ZAP baseline passivo, riepilogo e rapporto conservato sette giorni.
 - `scripts/`: decisioni verificabili con `node --test`; `renovate/default.json`: preset condiviso.
