@@ -20,6 +20,10 @@ L'input `runner` (stringa JSON, default `"ubuntu-latest"`) sceglie il runner dei
 
 L'inventario include dipendenze transitive e di sviluppo installate. Lista consentita: MIT, ISC, Apache-2.0, BSD-2-Clause, BSD-3-Clause, 0BSD, CC0-1.0, Unlicense, Python-2.0. Espressioni SPDX AND/OR vengono valutate; nomi storici Python non riconosciuti, eccezioni WITH e licenze mancanti generano avvisi. Una licenza fuori lista **non** blocca; un inventario illeggibile o non eseguito blocca. È un controllo dei metadati, non una valutazione legale.
 
+Per un avviso Node senza correzione, creare `.fuxx/audit-eccezioni.json` come array di oggetti `{ "id": "GHSA-...", "scadenza": "AAAA-MM-GG", "motivo": "..." }`.
+Sono ammesse solo eccezioni GHSA per avvisi `high`/`critical`, con scadenza odierna o entro 90 giorni; quelle scadute o malformate bloccano la CI.
+La scadenza viene confrontata in UTC e il controllo stampa le eccezioni effettivamente usate.
+
 ## Accesso privato e piano Free
 
 **Sì: un repository privato di un'organizzazione GitHub Free può richiamare workflow di un altro repository privato della stessa organizzazione.** La documentazione ammette chiamante privato → centrale privato; Actions è disponibile sul piano Free. Non serve Team per questa condivisione. La prova con due repository privati reali resta da eseguire dopo la pubblicazione. Fonti: [accessibilità dei workflow](https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations), [disponibilità di Actions](https://docs.github.com/en/actions/get-started/understand-github-actions).
