@@ -69,14 +69,15 @@ function auditNonIgnorati(vulnerabilita, eccezioni, usate) {
       if (!elemento || typeof elemento !== 'object') return false;
       const id = idDaVia(elemento);
       const severita = elemento.severity ?? vulnerabilitaPacchetto.severity;
-      return severitaBloccata(severita) && Boolean(id && eccezioni.has(id));
+      if (!severitaBloccata(severita)) return true;
+      return Boolean(id && eccezioni.has(id));
     });
     inCorso.delete(nome);
     memo.set(nome, tuttoIgnorato);
     if (tuttoIgnorato) {
       for (const elemento of via) {
         const id = typeof elemento === 'object' ? idDaVia(elemento) : undefined;
-        if (id) usate.add(id);
+        if (id && eccezioni.has(id)) usate.add(id);
       }
     }
     return tuttoIgnorato;
@@ -110,7 +111,7 @@ export function esegui({ cwd = process.cwd(), fileAudit } = {}) {
     ? leggiJson(path.resolve(cwd, fileAudit), 'file audit')
     : (() => {
         const comando = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-        const risultato = spawnSync(comando, ['audit', '--json'], { cwd, encoding: 'utf8' });
+        const risultato = spawnSync(comando, ['audit', '--json'], { cwd, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
         if (risultato.error) throw new Error(`npm audit non eseguibile: ${risultato.error.message}`);
         try { return JSON.parse(risultato.stdout); }
         catch (errore) { throw new Error(`npm audit non ha prodotto JSON valido: ${errore.message}`); }

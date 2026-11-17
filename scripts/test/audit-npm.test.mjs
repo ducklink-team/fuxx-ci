@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
-const script = path.resolve('scripts/audit-npm.mjs');
+const script = fileURLToPath(new URL('../audit-npm.mjs', import.meta.url));
 
 function esegui({ vulnerabilita, eccezioni, oggi = '2026-11-17' }) {
   const dir = mkdtempSync(path.join(tmpdir(), 'audit-npm-'));
@@ -93,4 +94,26 @@ test('un pacchetto transitivo sostenuto solo da avvisi ignorati non conta', () =
     eccezioni: [{ id: 'GHSA-aaaa-bbbb-cccc', scadenza: '2026-12-01', motivo: 'nessuna correzione' }],
   });
   assert.equal(r.status, 0, r.stderr);
+});
+
+test('high in eccezione insieme a un moderate nello stesso pacchetto restituisce 0', () => {
+  const r = esegui({
+    vulnerabilita: { next: { severity: 'high', fixAvailable: false, via: [
+      { source: 1, url: 'https://github.com/advisories/GHSA-aaaa-bbbb-cccc', severity: 'high', title: 'h' },
+      { source: 2, url: 'https://github.com/advisories/GHSA-dddd-eeee-ffff', severity: 'moderate', title: 'm' },
+    ] } },
+    eccezioni: [{ id: 'GHSA-aaaa-bbbb-cccc', scadenza: '2026-12-01', motivo: 'fix=null' }],
+  });
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+});
+
+test('high non in eccezione accanto a uno in eccezione restituisce 1', () => {
+  const r = esegui({
+    vulnerabilita: { next: { severity: 'high', fixAvailable: false, via: [
+      { source: 1, url: 'https://github.com/advisories/GHSA-aaaa-bbbb-cccc', severity: 'high', title: 'h' },
+      { source: 2, url: 'https://github.com/advisories/GHSA-dddd-eeee-ffff', severity: 'critical', title: 'c' },
+    ] } },
+    eccezioni: [{ id: 'GHSA-aaaa-bbbb-cccc', scadenza: '2026-12-01', motivo: 'fix=null' }],
+  });
+  assert.equal(r.status, 1);
 });
