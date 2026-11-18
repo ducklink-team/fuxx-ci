@@ -19,11 +19,18 @@ permissions:
 jobs:
   qualita:
     name: Qualità
-    runs-on: ${{ fromJSON(inputs.runner) }}
+    # Input runner: JSON ('["self-hosted","fuxx-vps"]', '"ubuntu-latest"') oppure stringa semplice (ubuntu-latest).
+    runs-on: ${{ (startsWith(inputs.runner, '[') || startsWith(inputs.runner, '"')) && fromJSON(inputs.runner) || inputs.runner }}
+    # Mai codice di una PR da fork su un runner self-hosted persistente: il job viene saltato.
+    if: ${{ !(contains(inputs.runner, 'self-hosted') && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) }}
     timeout-minutes: 20
     # Mai bloccante: anche un errore del job intero (timeout, setup) non deve rendere rossa la CI del chiamante.
     continue-on-error: true
     steps:
+      # Cache npm/npx isolata per job: niente avvelenamento della cache condivisa sul runner persistente.
+      - name: Cache npm isolata
+        shell: bash
+        run: echo "npm_config_cache=$RUNNER_TEMP/npm-cache" >> "$GITHUB_ENV"
       - uses: actions/checkout@v5
         with:
           fetch-depth: 1
