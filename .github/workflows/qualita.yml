@@ -10,12 +10,16 @@ on:
         type: string
         default: .
         description: Directory del progetto da analizzare
+      runner:
+        type: string
+        default: '"ubuntu-latest"'
+        description: 'Runner in JSON: "ubuntu-latest" oppure ["self-hosted","fuxx-vps"]'
 permissions:
   contents: read
 jobs:
   qualita:
     name: Qualità
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runner) }}
     timeout-minutes: 20
     # Mai bloccante: anche un errore del job intero (timeout, setup) non deve rendere rossa la CI del chiamante.
     continue-on-error: true
