@@ -10,9 +10,21 @@ permissions:
   actions: write
 
 jobs:
+  scegli:
+    name: Scegli runner
+    permissions:
+      contents: read
+    uses: ./.github/workflows/scegli-runner.yml
+    with:
+      versione-ci: v10
+      fallback: ${{ vars.CI_RUNNER || '"ubuntu-latest"' }}
+    secrets:
+      RUNNER_LETTURA: ${{ secrets.RUNNER_LETTURA }}
+
   manutenzione:
     name: Manutenzione
-    runs-on: ubuntu-latest
+    needs: scegli
+    runs-on: ${{ fromJSON(needs.scegli.outputs.runner) }}
     timeout-minutes: 20
     steps:
       - name: Checkout con storia completa
