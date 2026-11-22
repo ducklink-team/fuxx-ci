@@ -16,8 +16,6 @@ jobs:
     with:
       versione-ci: v10
       fallback: ${{ vars.CI_RUNNER || '"ubuntu-latest"' }}
-    secrets:
-      RUNNER_LETTURA: ${{ secrets.RUNNER_LETTURA }}
 
   test:
     needs: scegli
