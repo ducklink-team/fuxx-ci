@@ -14,7 +14,7 @@ jobs:
     name: Scegli runner
     permissions:
       contents: read
-    uses: ducklink-team/fuxx-ci/.github/workflows/scegli-runner.yml@2185778c917d7143660402e5abe6a21c09dadbab # v10
+    uses: ./.github/workflows/scegli-runner.yml
     with:
       versione-ci: v10
       fallback: ${{ vars.CI_RUNNER || '"ubuntu-latest"' }}
