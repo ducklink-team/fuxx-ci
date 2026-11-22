@@ -18,6 +18,10 @@ Gli input `linguaggio: node|python`, `directory` (default `.`) e `requirements` 
 
 L'input `runner` (stringa JSON, default `"ubuntu-latest"`) sceglie il runner dei tre workflow riusabili, per esempio `runner: ${{ vars.CI_RUNNER || '"ubuntu-latest"' }}` con `["self-hosted","fuxx-vps"]` in `CI_RUNNER`. `controllo-sito` usa docker: sui runner `fuxx-vps` senza socket Docker non funziona, quindi lasciarlo su `ubuntu-latest`.
 
+### scegli-runner
+
+Chiamare `.github/workflows/scegli-runner.yml@v6` con `fallback: ${{ vars.CI_RUNNER }}` e usare l'output come `runner: ${{ needs.scegli.outputs.runner }}`. Il secret facoltativo `RUNNER_LETTURA` è un token fine-grained a sola lettura sui runner del repository chiamante, creato dal CEO; senza secret o in una PR da fork si usa il fallback, vuoto significa `"ubuntu-latest"`. `controllo-sito` resta sempre su `ubuntu-latest`.
+
 L'inventario include dipendenze transitive e di sviluppo installate. Lista consentita: MIT, ISC, Apache-2.0, BSD-2-Clause, BSD-3-Clause, 0BSD, CC0-1.0, Unlicense, Python-2.0. Espressioni SPDX AND/OR vengono valutate; nomi storici Python non riconosciuti, eccezioni WITH e licenze mancanti generano avvisi. Una licenza fuori lista **non** blocca; un inventario illeggibile o non eseguito blocca. È un controllo dei metadati, non una valutazione legale.
 
 Per un avviso Node senza correzione, creare `.fuxx/audit-eccezioni.json` come array di oggetti `{ "id": "GHSA-...", "scadenza": "AAAA-MM-GG", "motivo": "..." }`.
