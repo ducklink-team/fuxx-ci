@@ -1,8 +1,4 @@
-#### scegli-runner
-
-Chiamare `.github/workflows/scegli-runner.yml@v10` con `fallback: ${{ vars.CI_RUNNER }}` e usare l'output come `runner: ${{ needs.scegli.outputs.runner }}`. Il secret facoltativo `RUNNER_LETTURA` è un token fine-grained a sola lettura sui runner del repository chiamante, creato dal CEO; in una PR da fork si usa sempre `"ubuntu-latest"`; senza secret si usa il fallback (vuoto = `"ubuntu-latest"`); con secret ma senza runner `pc-<repo>` libero (o con API non raggiungibile) si usa `"ubuntu-latest"`. Chiamarla solo da workflow `pull_request`/`push`, mai da `pull_request_target`. `controllo-sito` resta sempre su `ubuntu-latest`.
-
- fuxx-ci — CI centrale FUXX
+# fuxx-ci — CI centrale FUXX
 
 Cartella pronta a diventare la radice di `ducklink-team/fuxx-ci`, dopo il merge della corsia G. Il repository pubblicato usa il tag stabile `v4` per i workflow riusabili. Gli script sono Node ESM, senza dipendenze del progetto.
 
@@ -27,6 +23,10 @@ L'inventario include dipendenze transitive e di sviluppo installate. Lista conse
 Per un avviso Node senza correzione, creare `.fuxx/audit-eccezioni.json` come array di oggetti `{ "id": "GHSA-...", "scadenza": "AAAA-MM-GG", "motivo": "..." }`.
 Sono ammesse solo eccezioni GHSA per avvisi `high`/`critical`, con scadenza odierna o entro 90 giorni; quelle scadute o malformate bloccano la CI.
 La scadenza viene confrontata in UTC e il controllo stampa le eccezioni effettivamente usate.
+
+### scegli-runner
+
+Chiamare `.github/workflows/scegli-runner.yml@v10` con `fallback: ${{ vars.CI_RUNNER }}` e usare l'output come `runner: ${{ needs.scegli.outputs.runner }}`. Il secret facoltativo `RUNNER_LETTURA` è un token fine-grained a sola lettura sui runner del repository chiamante, creato dal CEO. PR da fork: sempre `"ubuntu-latest"`. Senza secret: il fallback (vuoto = `"ubuntu-latest"`). Con secret ma senza runner `pc-<repo>` libero, o con API irraggiungibile: `"ubuntu-latest"`. Chiamarla solo da workflow `pull_request`/`push`, mai da `pull_request_target`. `controllo-sito` resta su `ubuntu-latest`.
 
 ## Accesso privato e piano Free
 

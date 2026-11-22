@@ -9,7 +9,7 @@ on:
     inputs:
       versione-ci:
         type: string
-        default: v6
+        default: v10
       fallback:
         type: string
         default: '"ubuntu-latest"'
@@ -46,4 +46,7 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           RUNNER_LETTURA: ${{ secrets.RUNNER_LETTURA }}
         shell: bash
-        run: printf 'runner=%s\n' "$(node __fuxx_ci/scripts/scegli-runner.mjs)" >> "$GITHUB_OUTPUT"
+        run: |
+          r="$(node __fuxx_ci/scripts/scegli-runner.mjs || true)"
+          [ -n "$r" ] || r='"ubuntu-latest"'
+          echo "runner=$r" >> "$GITHUB_OUTPUT"
