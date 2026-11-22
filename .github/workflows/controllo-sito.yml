@@ -12,7 +12,7 @@ on:
       runner:
         type: string
         default: '"ubuntu-latest"'
-        description: 'Runner in JSON: "ubuntu-latest" oppure ["self-hosted","fuxx-vps"]'
+        description: 'Runner in JSON: "ubuntu-latest" oppure ["self-hosted","fuxx-pc"]'
     secrets:
       LETTURA_CI:
         required: true
