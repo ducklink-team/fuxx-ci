@@ -16,7 +16,7 @@ jobs:
       contents: read
     uses: ./.github/workflows/scegli-runner.yml
     with:
-      versione-ci: v10
+      versione-ci: v11
       fallback: ${{ vars.CI_RUNNER || '"ubuntu-latest"' }}
     secrets:
       RUNNER_LETTURA: ${{ secrets.RUNNER_LETTURA }}
