@@ -20,7 +20,7 @@ export function scegliRunner({ fork = false, token, runners, fallback, nomeRepo 
   if (typeof token !== 'string' || !token) return fallbackJson(fallback);
   if (!Array.isArray(runners) || typeof nomeRepo !== 'string' || !nomeRepo) return UBUNTU;
   const prefisso = `pc-${nomeRepo}`;
-  return runners.some((runner) => runner?.name?.startsWith(prefisso)
+  return runners.some((runner) => (runner?.name === prefisso || runner?.name?.startsWith(`${prefisso}-`))
     && runner.status === 'online' && runner.busy === false)
     ? SELF_HOSTED
     : UBUNTU;
@@ -29,7 +29,7 @@ export function scegliRunner({ fork = false, token, runners, fallback, nomeRepo 
 async function leggiRunner(repository, token) {
   const base = process.env.GITHUB_API_URL;
   if (!base) throw new Error('API non configurata');
-  const url = new URL(`repos/${repository}/actions/runners`, `${base.replace(/\/$/, '')}/`);
+  const url = new URL(`repos/${repository}/actions/runners?per_page=100`, `${base.replace(/\/$/, '')}/`);
   const risposta = await fetch(url, {
     headers: { accept: 'application/vnd.github+json', authorization: `Bearer ${token}` },
     signal: AbortSignal.timeout(10_000),

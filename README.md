@@ -1,4 +1,8 @@
-# fuxx-ci — CI centrale FUXX
+#### scegli-runner
+
+Chiamare `.github/workflows/scegli-runner.yml@v10` con `fallback: ${{ vars.CI_RUNNER }}` e usare l'output come `runner: ${{ needs.scegli.outputs.runner }}`. Il secret facoltativo `RUNNER_LETTURA` è un token fine-grained a sola lettura sui runner del repository chiamante, creato dal CEO; in una PR da fork si usa sempre `"ubuntu-latest"`; senza secret si usa il fallback (vuoto = `"ubuntu-latest"`); con secret ma senza runner `pc-<repo>` libero (o con API non raggiungibile) si usa `"ubuntu-latest"`. Chiamarla solo da workflow `pull_request`/`push`, mai da `pull_request_target`. `controllo-sito` resta sempre su `ubuntu-latest`.
+
+ fuxx-ci — CI centrale FUXX
 
 Cartella pronta a diventare la radice di `ducklink-team/fuxx-ci`, dopo il merge della corsia G. Il repository pubblicato usa il tag stabile `v4` per i workflow riusabili. Gli script sono Node ESM, senza dipendenze del progetto.
 
@@ -17,10 +21,6 @@ Per il controllo settimanale copiare `esempi/controllo-settimanale.yml`, imposta
 Gli input `linguaggio: node|python`, `directory` (default `.`) e `requirements` (default `requirements.txt`, relativo alla directory progetto) configurano la sicurezza. Per Python usare il proprio job di test al posto del job npm nell'esempio. Audit Python blocca ogni vulnerabilità nota e la raccolta incompleta; audit Node blocca `high` e `critical`. Occorrono `package-lock.json` per Node oppure requirements installabili per Python, con tutte le dipendenze da verificare. I file di lock alternativi vanno esportati in requirements prima della chiamata.
 
 L'input `runner` (stringa JSON, default `"ubuntu-latest"`) sceglie il runner dei tre workflow riusabili, per esempio `runner: ${{ vars.CI_RUNNER || '"ubuntu-latest"' }}` con `["self-hosted","fuxx-vps"]` in `CI_RUNNER`. `controllo-sito` usa docker: sui runner `fuxx-vps` senza socket Docker non funziona, quindi lasciarlo su `ubuntu-latest`.
-
-### scegli-runner
-
-Chiamare `.github/workflows/scegli-runner.yml@v6` con `fallback: ${{ vars.CI_RUNNER }}` e usare l'output come `runner: ${{ needs.scegli.outputs.runner }}`. Il secret facoltativo `RUNNER_LETTURA` è un token fine-grained a sola lettura sui runner del repository chiamante, creato dal CEO; senza secret o in una PR da fork si usa il fallback, vuoto significa `"ubuntu-latest"`. `controllo-sito` resta sempre su `ubuntu-latest`.
 
 L'inventario include dipendenze transitive e di sviluppo installate. Lista consentita: MIT, ISC, Apache-2.0, BSD-2-Clause, BSD-3-Clause, 0BSD, CC0-1.0, Unlicense, Python-2.0. Espressioni SPDX AND/OR vengono valutate; nomi storici Python non riconosciuti, eccezioni WITH e licenze mancanti generano avvisi. Una licenza fuori lista **non** blocca; un inventario illeggibile o non eseguito blocca. È un controllo dei metadati, non una valutazione legale.
 
