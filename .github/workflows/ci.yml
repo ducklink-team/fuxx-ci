@@ -10,8 +10,18 @@ permissions:
   contents: read
 
 jobs:
+  scegli:
+    name: Scegli runner
+    uses: ducklink-team/fuxx-ci/.github/workflows/scegli-runner.yml@v10
+    with:
+      versione-ci: v10
+      fallback: ${{ vars.CI_RUNNER || '"ubuntu-latest"' }}
+    secrets:
+      RUNNER_LETTURA: ${{ secrets.RUNNER_LETTURA }}
+
   test:
-    runs-on: ubuntu-latest
+    needs: scegli
+    runs-on: ${{ fromJSON(needs.scegli.outputs.runner) }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v6

@@ -10,9 +10,19 @@ permissions:
   actions: write
 
 jobs:
+  scegli:
+    name: Scegli runner
+    uses: ducklink-team/fuxx-ci/.github/workflows/scegli-runner.yml@2185778c917d7143660402e5abe6a21c09dadbab # v10
+    with:
+      versione-ci: v10
+      fallback: ${{ vars.CI_RUNNER || '"ubuntu-latest"' }}
+    secrets:
+      RUNNER_LETTURA: ${{ secrets.RUNNER_LETTURA }}
+
   manutenzione:
     name: Manutenzione
-    runs-on: ubuntu-latest
+    needs: scegli
+    runs-on: ${{ fromJSON(needs.scegli.outputs.runner) }}
     timeout-minutes: 20
     steps:
       - name: Checkout con storia completa
