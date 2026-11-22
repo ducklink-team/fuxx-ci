@@ -24,6 +24,10 @@ Per un avviso Node senza correzione, creare `.fuxx/audit-eccezioni.json` come ar
 Sono ammesse solo eccezioni GHSA per avvisi `high`/`critical`, con scadenza odierna o entro 90 giorni; quelle scadute o malformate bloccano la CI.
 La scadenza viene confrontata in UTC e il controllo stampa le eccezioni effettivamente usate.
 
+### scegli-runner
+
+Chiamare `.github/workflows/scegli-runner.yml@v10` con `fallback: ${{ vars.CI_RUNNER }}` e usare l'output come `runner: ${{ needs.scegli.outputs.runner }}`. Il secret facoltativo `RUNNER_LETTURA` è un token fine-grained a sola lettura sui runner del repository chiamante, creato dal CEO. PR da fork: sempre `"ubuntu-latest"`. Senza secret: il fallback (vuoto = `"ubuntu-latest"`). Con secret ma senza runner `pc-<repo>` libero, o con API irraggiungibile: `"ubuntu-latest"`. Chiamarla solo da workflow `pull_request`/`push`, mai da `pull_request_target`. `controllo-sito` resta su `ubuntu-latest`.
+
 ## Accesso privato e piano Free
 
 **Sì: un repository privato di un'organizzazione GitHub Free può richiamare workflow di un altro repository privato della stessa organizzazione.** La documentazione ammette chiamante privato → centrale privato; Actions è disponibile sul piano Free. Non serve Team per questa condivisione. La prova con due repository privati reali resta da eseguire dopo la pubblicazione. Fonti: [accessibilità dei workflow](https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations), [disponibilità di Actions](https://docs.github.com/en/actions/get-started/understand-github-actions).

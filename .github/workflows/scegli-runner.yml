@@ -1,0 +1,52 @@
+name: Scegli runner riutilizzabile
+
+on:
+  workflow_call:
+    outputs:
+      runner:
+        description: Runner JSON scelto per la CI
+        value: ${{ jobs.scegli.outputs.runner }}
+    inputs:
+      versione-ci:
+        type: string
+        default: v10
+      fallback:
+        type: string
+        default: '"ubuntu-latest"'
+        description: Runner JSON usato senza RUNNER_LETTURA
+    secrets:
+      RUNNER_LETTURA:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  scegli:
+    outputs:
+      runner: ${{ steps.scelta.outputs.runner }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: ducklink-team/fuxx-ci
+          ref: ${{ inputs.versione-ci }}
+          path: __fuxx_ci
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Scegli runner
+        id: scelta
+        env:
+          FALLBACK_RUNNER: ${{ inputs.fallback }}
+          FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+          GITHUB_API_URL: ${{ github.api_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          RUNNER_LETTURA: ${{ secrets.RUNNER_LETTURA }}
+        shell: bash
+        run: |
+          r="$(node __fuxx_ci/scripts/scegli-runner.mjs || true)"
+          [ -n "$r" ] || r='"ubuntu-latest"'
+          echo "runner=$r" >> "$GITHUB_OUTPUT"
