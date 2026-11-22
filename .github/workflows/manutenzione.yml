@@ -12,6 +12,8 @@ permissions:
 jobs:
   scegli:
     name: Scegli runner
+    permissions:
+      contents: read
     uses: ducklink-team/fuxx-ci/.github/workflows/scegli-runner.yml@2185778c917d7143660402e5abe6a21c09dadbab # v10
     with:
       versione-ci: v10
