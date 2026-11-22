@@ -1,7 +1,7 @@
 import { pathToFileURL } from 'node:url';
 
 const UBUNTU = JSON.stringify('ubuntu-latest');
-const SELF_HOSTED = JSON.stringify(['self-hosted', 'fuxx-vps']);
+const SELF_HOSTED = JSON.stringify(['self-hosted', 'fuxx-pc']);
 
 function fallbackJson(fallback) {
   if (typeof fallback !== 'string' || !fallback.trim()) return UBUNTU;

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { scegliRunner } from '../scegli-runner.mjs';
 
 const ubuntu = '"ubuntu-latest"';
-const selfHosted = '["self-hosted","fuxx-vps"]';
+const selfHosted = '["self-hosted","fuxx-pc"]';
 
 test('una PR da fork usa ubuntu anche con token e runner libero', () => {
   assert.equal(scegliRunner({

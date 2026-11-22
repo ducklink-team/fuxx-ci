@@ -13,13 +13,13 @@ on:
       runner:
         type: string
         default: '"ubuntu-latest"'
-        description: 'Runner in JSON: "ubuntu-latest" oppure ["self-hosted","fuxx-vps"]'
+        description: 'Runner in JSON: "ubuntu-latest" oppure ["self-hosted","fuxx-pc"]'
 permissions:
   contents: read
 jobs:
   qualita:
     name: Qualità
-    # Input runner: JSON ('["self-hosted","fuxx-vps"]', '"ubuntu-latest"') oppure stringa semplice (ubuntu-latest).
+    # Input runner: JSON ('["self-hosted","fuxx-pc"]', '"ubuntu-latest"') oppure stringa semplice (ubuntu-latest).
     runs-on: ${{ (startsWith(inputs.runner, '[') || startsWith(inputs.runner, '"')) && fromJSON(inputs.runner) || inputs.runner }}
     # Mai codice di una PR da fork su un runner self-hosted persistente: il job viene saltato.
     if: ${{ !(contains(inputs.runner, 'self-hosted') && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) }}
