@@ -26,7 +26,7 @@ La scadenza viene confrontata in UTC e il controllo stampa le eccezioni effettiv
 
 ### scegli-runner
 
-Chiamare `.github/workflows/scegli-runner.yml@v11` con `fallback: ${{ vars.CI_RUNNER }}` e usare l'output come `runner: ${{ needs.scegli.outputs.runner }}`. Il secret facoltativo `RUNNER_LETTURA` è un token fine-grained a sola lettura sui runner del repository chiamante, creato dal CEO. PR da fork: sempre `"ubuntu-latest"`. Senza secret: il fallback (vuoto = `"ubuntu-latest"`). Con secret ma senza runner `pc-<repo>` libero, o con API irraggiungibile: `"ubuntu-latest"`. Chiamarla solo da workflow `pull_request`/`push`, mai da `pull_request_target`. `controllo-sito` resta su `ubuntu-latest`.
+Chiamare `.github/workflows/scegli-runner.yml@v12` con `fallback: ${{ vars.CI_RUNNER }}` e usare l'output come `runner: ${{ needs.scegli.outputs.runner }}`. Il secret facoltativo `RUNNER_LETTURA` è un token fine-grained a sola lettura sui runner del repository chiamante, creato dal CEO. PR da fork: sempre `"ubuntu-latest"`. Senza secret: il fallback (vuoto = `"ubuntu-latest"`). Con secret: `pc-<repo>` online e libero seleziona `["self-hosted","fuxx-pc"]`; altrimenti un runner online con etichetta `fuxx-ci` seleziona `["self-hosted","fuxx-ci"]` anche se occupato; senza runner online o con API irraggiungibile: `"ubuntu-latest"`. Chiamarla solo da workflow `pull_request`/`push`, mai da `pull_request_target`. `controllo-sito` resta su `ubuntu-latest`.
 
 ## Accesso privato e piano Free
 

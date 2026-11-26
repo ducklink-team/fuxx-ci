@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { scegliRunner } from '../scegli-runner.mjs';
+const ubuntu='"ubuntu-latest"', pc='["self-hosted","fuxx-pc"]', ci='["self-hosted","fuxx-ci"]';
+const call=(runners, extra={})=>scegliRunner({token:'token',runners,nomeRepo:'progetto',...extra});
+test('pc online libero ha precedenza',()=>assert.equal(call([{name:'pc-progetto',status:'online',busy:false},{name:'vps-progetto',status:'online',labels:[{name:'fuxx-ci'}]}]),pc));
+test('fuxx-ci online è il secondo ripiego anche occupato',()=>assert.equal(call([{name:'pc-progetto',status:'online',busy:true},{name:'vps-progetto',status:'online',busy:true,labels:[{name:'fuxx-ci'}]}]),ci));
+test('nessun runner online usa ubuntu',()=>{assert.equal(call([{name:'vps-progetto',status:'offline',labels:[{name:'fuxx-ci'}]}]),ubuntu);assert.equal(call([]),ubuntu)});
+test('runner fuxx-ci offline o etichetta assente non selezionati',()=>{assert.equal(call([{name:'vps-progetto',status:'offline',labels:[{name:'fuxx-ci'}]}]),ubuntu);assert.equal(call([{name:'vps-progetto',status:'online',labels:[{name:'other'}]}]),ubuntu)});
+test('labels assenti o malformate e fork fanno fallback ubuntu',()=>{assert.doesNotThrow(()=>assert.equal(call([{name:'vps-progetto',status:'online',labels:null}]),ubuntu));assert.equal(call([{name:'vps-progetto',status:'online',labels:{}}]),ubuntu);assert.equal(call([{name:'vps-progetto',status:'online',labels:[{name:'fuxx-ci'}]}],{fork:true}),ubuntu)});

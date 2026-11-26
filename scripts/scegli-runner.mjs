@@ -2,6 +2,7 @@ import { pathToFileURL } from 'node:url';
 
 const UBUNTU = JSON.stringify('ubuntu-latest');
 const SELF_HOSTED = JSON.stringify(['self-hosted', 'fuxx-pc']);
+const SELF_HOSTED_CI = JSON.stringify(['self-hosted', 'fuxx-ci']);
 
 function fallbackJson(fallback) {
   if (typeof fallback !== 'string' || !fallback.trim()) return UBUNTU;
@@ -20,10 +21,12 @@ export function scegliRunner({ fork = false, token, runners, fallback, nomeRepo 
   if (typeof token !== 'string' || !token) return fallbackJson(fallback);
   if (!Array.isArray(runners) || typeof nomeRepo !== 'string' || !nomeRepo) return UBUNTU;
   const prefisso = `pc-${nomeRepo}`;
-  return runners.some((runner) => (runner?.name === prefisso || runner?.name?.startsWith(`${prefisso}-`))
+  if (runners.some((runner) => (runner?.name === prefisso || runner?.name?.startsWith(`${prefisso}-`))
     && runner.status === 'online' && runner.busy === false)
-    ? SELF_HOSTED
-    : UBUNTU;
+  ) return SELF_HOSTED;
+  return runners.some((runner) => runner?.status === 'online'
+    && Array.isArray(runner.labels)
+    && runner.labels.some((label) => label?.name === 'fuxx-ci')) ? SELF_HOSTED_CI : UBUNTU;
 }
 
 async function leggiRunner(repository, token) {
