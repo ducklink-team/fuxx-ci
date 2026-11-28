@@ -9,7 +9,7 @@ on:
     inputs:
       versione-ci:
         type: string
-        default: v12
+        default: v13
       fallback:
         type: string
         default: '"ubuntu-latest"'
